@@ -2,7 +2,7 @@
 // delegated from the document by data-* attributes.
 
 import { analyze } from './engine/analysis.js';
-import { CLASSES, CLASS_NAMES, LEVEL_CAP } from './engine/layout.js';
+import { CLASSES, CLASS_NAMES, LEVEL_CAP, FIELD_COUNT } from './engine/layout.js';
 import { DATASET_VERSION, parseClientFiles } from './engine/parse.js';
 import { bundle, chainCaution, formatMetric, METRICS, HUNTS } from './engine/roles.js';
 import { option, spellName, effects } from './ui.js';
@@ -25,6 +25,8 @@ const state = {
   open: new Set(), // expanded cards and rows
   detail: null, // spell id shown in full in the spell list
   incoming: readShareLink(location.hash), // sets from a shared link, until used or ignored
+  pending: { spells: null, dbstr: null }, // files chosen so far; both are needed
+  reloading: false, // the file panel is open over an already-loaded dataset
 };
 
 const root = document.getElementById('app');
@@ -67,18 +69,32 @@ function parseInWorker(spells, dbstr, meta) {
   });
 }
 
-async function loadFiles(list) {
-  const files = [...list];
-  const find = (n) => files.find((f) => f.name.toLowerCase() === n);
-  const spells = find('spells_us.txt');
-  const dbstr = find('dbstr_us.txt');
+const FILES = { spells: 'spells_us.txt', dbstr: 'dbstr_us.txt' };
+
+// Which of the two a file is: by its name, or, for a renamed copy, by its first line.
+async function kindOf(file) {
+  const n = file.name.toLowerCase();
+  if (n === FILES.spells) return 'spells';
+  if (n === FILES.dbstr) return 'dbstr';
+  const f = ((await file.slice(0, 8192).text()).split(/\r?\n/)[0] ?? '').split('^');
+  if (f.length === FIELD_COUNT && /^\d+$/.test(f[0])) return 'spells';
+  if (f.length >= 4 && f.length <= 6 && /^\d+$/.test(f[0]) && /^\d+$/.test(f[1])) return 'dbstr';
+  return null;
+}
+
+// Files arrive one at a time or together, from either picker or a drop. Each goes to its own
+// place; once both are there they are read.
+async function addFiles(list) {
   state.error = null;
-  if (!spells || !dbstr) {
-    const have = files.map((f) => f.name).join(', ') || 'nothing';
-    state.error = `Both files are needed: spells_us.txt and dbstr_us.txt. You chose: ${have}.`;
-    render();
-    return;
+  for (const file of [...list]) {
+    const kind = await kindOf(file);
+    if (kind) state.pending[kind] = file;
+    else if (file.name.toLowerCase() === 'spells_us_str.txt') state.error = 'That is spells_us_str.txt. The one needed is spells_us.txt, without "_str".';
+    else state.error = `${file.name} is not one of the two files: choose ${FILES.spells} or ${FILES.dbstr}.`;
   }
+  const { spells, dbstr } = state.pending;
+  if (!spells || !dbstr) { render(); return; }
+
   state.busy = `Reading ${spells.name} (${(spells.size / 1e6).toFixed(0)} MB)…`;
   render();
   try {
@@ -91,10 +107,12 @@ async function loadFiles(list) {
     const ds = await parseInWorker(a, b, meta);
     state.ds = ds;
     state.saved = await store.saveDataset(ds);
+    state.reloading = false;
     recompute();
   } catch (e) {
     state.error = e.message;
   }
+  state.pending = { spells: null, dbstr: null };
   state.busy = null;
   render();
 }
@@ -107,19 +125,36 @@ function fileStatus() {
   return `<div class="files loaded">
     <p>Using your client files: <b>spells_us.txt</b> from ${esc(date)}, ${s.kept.toLocaleString()} spells
     any class can cast at 1–${LEVEL_CAP}.${state.saved === false ? ' <span class="warn">This browser would not store them, so you will need to load them again next visit.</span>' : ''}</p>
-    <p class="actions"><label class="button">Load newer files<input type="file" multiple accept=".txt" data-files hidden></label>
+    <p class="actions"><button class="button" data-act="reload">Load newer files</button>
     <button data-act="forget" class="quiet">Forget my files</button></p>
   </div>`;
 }
 
+function fileSlot(kind, primary) {
+  const f = state.pending[kind];
+  const input = `<input type="file" accept=".txt" data-file-slot="${kind}" hidden>`;
+  if (f) {
+    return `<li class="slot done"><span class="tick">✓</span> <b>${esc(FILES[kind])}</b>
+      <span class="small">${(f.size / 1e6).toFixed(1)} MB</span>
+      <label class="quiet">change${input}</label></li>`;
+  }
+  return `<li class="slot"><label class="button${primary ? ' primary' : ''}">Choose ${esc(FILES[kind])}${input}</label></li>`;
+}
+
 function fileIntro() {
+  const reloading = state.ds && state.reloading;
+  const firstMissing = state.pending.spells ? 'dbstr' : 'spells';
   return `<div class="files" data-drop>
-    <h2>1 · Load your client files</h2>
-    <p>Open your EverQuest Legends folder — the one with <code>eqgame.exe</code> in it — and choose
-    <b>spells_us.txt</b> and <b>dbstr_us.txt</b> together. Or drop both on this box.</p>
-    <p class="actions"><label class="button primary">Choose the two files<input type="file" multiple accept=".txt" data-files hidden></label></p>
+    <h2>${reloading ? 'Load newer files' : '1 · Load your client files'}</h2>
+    <p>Two files from your EverQuest Legends folder — the one with <code>eqgame.exe</code> in it.
+    Choose them one at a time, in either order.</p>
+    <ol class="slots">${fileSlot('spells', firstMissing === 'spells')}${fileSlot('dbstr', firstMissing === 'dbstr')}</ol>
+    <p class="small"><b>Tip:</b> the folder holds thousands of files, so don't scroll for it. On Windows, type
+    <code>${esc(FILES[firstMissing])}</code> into the <i>File name</i> box and press Enter; on a Mac, start typing the
+    name and the list jumps to it. You can also drop either file, or both, on this box.</p>
     <p class="small">They are read here, in your browser. Nothing is uploaded; this page has no server.
     After the first time it remembers what it needs, so you only come back here after a game patch.</p>
+    ${reloading ? '<p class="actions"><button class="quiet" data-act="cancel-reload">Cancel</button></p>' : ''}
   </div>`;
 }
 
@@ -134,7 +169,7 @@ function setup() {
   const st = state.settings;
   const classSelect = (i) => `<select data-trio="${i}" aria-label="class ${i + 1}">${CLASSES.map((c) => option(c, `${c} — ${CLASS_NAMES[c]}`, st.trio[i])).join('')}</select>`;
   return `<section class="setup">
-    ${state.ds ? fileStatus() : fileIntro()}
+    ${state.ds && !state.reloading ? fileStatus() : fileIntro()}
     <div class="trio${state.ds ? '' : ' muted'}">
       <h2>${state.ds ? '' : '2 · '}Your trio</h2>
       <div class="row">${classSelect(0)}${classSelect(1)}${classSelect(2)}
@@ -312,7 +347,7 @@ function render() {
 document.addEventListener('change', (e) => {
   const el = e.target;
   if (state.ds && onSetsChange(el, state, set)) return;
-  if (el.matches('[data-files]')) loadFiles(el.files);
+  if (el.matches('[data-file-slot]')) addFiles(el.files);
   else if (el.matches('[data-trio]')) {
     const trio = [...state.settings.trio];
     trio[Number(el.dataset.trio)] = el.value;
@@ -352,6 +387,13 @@ document.addEventListener('click', (e) => {
     return;
   }
   if (state.ds && onSetsClick(el, state, set, render)) return;
+  if (el.dataset.act === 'reload' || el.dataset.act === 'cancel-reload') {
+    state.reloading = el.dataset.act === 'reload';
+    state.pending = { spells: null, dbstr: null };
+    state.error = null;
+    render();
+    return;
+  }
   if (el.dataset.act === 'forget') {
     store.forgetDataset();
     state.ds = null;
@@ -380,7 +422,7 @@ document.addEventListener('dragover', (e) => { if (e.target.closest('[data-drop]
 document.addEventListener('drop', (e) => {
   if (!e.target.closest('[data-drop]')) return;
   e.preventDefault();
-  loadFiles(e.dataTransfer.files);
+  addFiles(e.dataTransfer.files);
 });
 
 // ---- start --------------------------------------------------------------------------------
@@ -391,7 +433,7 @@ async function devLoad() {
   const m = location.hash.match(/^#load=(.+)$/);
   if (!m || !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return false;
   const get = async (n) => new File([await (await fetch(`${m[1]}/${n}`)).arrayBuffer()], n);
-  await loadFiles([await get('spells_us.txt'), await get('dbstr_us.txt')]);
+  await addFiles([await get('spells_us.txt'), await get('dbstr_us.txt')]);
   return true;
 }
 

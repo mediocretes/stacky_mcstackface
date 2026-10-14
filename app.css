@@ -178,3 +178,8 @@ ol.gems li.gem.changed { background: var(--warn-bg); }
 
 textarea.manual { width: 100%; font: 0.8rem/1.4 ui-monospace, monospace; color: var(--ink); background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 6px; overflow-wrap: anywhere; }
 .small, .warn, .error { overflow-wrap: anywhere; }
+
+ol.slots { list-style: none; padding: 0; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+.slot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 2.2em; }
+.slot.done .tick { color: var(--accent); font-weight: 700; }
+.slot label.quiet { color: var(--accent); cursor: pointer; }

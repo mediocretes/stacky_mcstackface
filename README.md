@@ -1,6 +1,6 @@
-# Trio Spell Planner
+# Stacky McStackface
 
-*A working title.* A single web page for EverQuest Legends players: pick your three classes and a
+A single web page for EverQuest Legends players: pick your three classes and a
 level, and see the best spell your trio can cast for each job — heal, slow, haste, nuke, damage over
 time, buffs — and the spell that replaces it later. Build spell sets that keep themselves current as
 you level.
@@ -11,9 +11,10 @@ install, and it works everything out from those.
 ## Using it
 
 1. Open the page.
-2. In your EverQuest Legends folder (the one with `eqgame.exe`), choose **`spells_us.txt`** and
-   **`dbstr_us.txt`** together, or drop them on the page. You only do this once, and again after a
-   game patch.
+2. From your EverQuest Legends folder (the one with `eqgame.exe`), choose **`spells_us.txt`** and
+   **`dbstr_us.txt`**, one at a time in either order, or drop them on the page. The folder is large:
+   type the name into the file window's *File name* box rather than scrolling for it. You only do
+   this once, and again after a game patch.
 3. Choose your three classes and your trio's level — the lowest of the three.
 
 | Tab | What it shows |

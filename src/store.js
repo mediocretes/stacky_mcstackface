@@ -4,9 +4,9 @@
 // Either can be unavailable (private windows, blocked site data); the page then works for
 // the visit and forgets afterwards.
 
-const DB = 'eql-trio-planner';
+const DB = 'stacky-mcstackface';
 const STORE = 'kv';
-const SETTINGS = 'eql-trio-planner.settings';
+const SETTINGS = 'stacky-mcstackface.settings';
 
 function open() {
   return new Promise((resolve, reject) => {
