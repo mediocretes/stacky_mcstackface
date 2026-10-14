@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trio Spell Planner</title>
+  <meta name="description" content="The best spells your EverQuest Legends trio can cast at its level, worked out from your own client files, in your browser.">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Trio Spell Planner <span>for EverQuest Legends</span></h1>
+    <p>Pick three classes and a level, and see the best spell you can cast for each job — heal, slow, haste,
+      nuke, damage over time, buffs — and what replaces it later. Everything is worked out from your own game files,
+      here in your browser.</p>
+  </header>
+  <main id="app"><p class="busy">Loading…</p></main>
+  <footer>
+    <p>A fan-made tool, not affiliated with or endorsed by Daybreak Game Company. It ships no game data: every
+      spell and number comes from the files you load, and they never leave this browser.</p>
+    <p>Numbers are the spell file's formulas at your level. A few formulas are educated guesses, and how spells
+      stack on you is not modelled yet; when in doubt, trust what the game shows you.</p>
+  </footer>
+  <script type="module" src="src/app.js"></script>
+  <noscript><p>This page needs JavaScript.</p></noscript>
+</body>
+</html>

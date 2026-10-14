@@ -1,0 +1,11 @@
+{
+  "name": "stacky_mcstackface",
+  "private": true,
+  "type": "module",
+  "description": "The best spells an EverQuest Legends trio can cast, worked out in the browser from the player's own client files.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test",
+    "serve": "python3 -m http.server 8000"
+  }
+}
