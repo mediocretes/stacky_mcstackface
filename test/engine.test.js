@@ -281,3 +281,15 @@ test('aura: songs in each other\'s way', () => {
   assert.deepEqual(haste.map((x) => [x.kind, x.keep.name]), [['haste', 'Test Haste Song']], 'hastes never add, whatever the slot');
   assert.deepEqual(auraTemplate(c, 5).map((r) => r.key), ['haste', 'damage_shield', 'singing_amplification']);
 });
+
+test('rule sections: most likely first, alphabetical within, nothing left over', async () => {
+  const { sections } = await import('../src/groups.js');
+  const all = sections(() => true);
+  assert.deepEqual(all.map(([title]) => title), ['Damage', 'Healing', 'Slows and debuffs', 'Haste and combat', 'Defense',
+    'Stats', 'Resists', 'Mana and endurance', 'Pets and summoning', 'Cures', 'Movement and senses', 'Travel and escape', 'Appearance'],
+  'every rule has a section; a new one shows up here as "Other" until it is given one');
+  assert.deepEqual(all[0][1].map((r) => r.name), ['best burst damage', 'best damage', 'best damage over time', 'best song damage']);
+  assert.deepEqual(all[5][1].map((r) => r.name), ['agility', 'charisma', 'dexterity', 'intelligence', 'stamina', 'strength', 'wisdom']);
+  const onlyWants = sections((kind) => kind === 'want');
+  assert.ok(!onlyWants.some(([title]) => title === 'Damage'), 'a section with nothing available is left out');
+});

@@ -3,10 +3,11 @@
 import { esc } from './format.js';
 import { option, spellName, effects } from './ui.js';
 import { GEMS, context, resolveSet, nextChanges, template, asText, ruleLabel, rulesFor, resolveWithAura, auraTemplate } from './engine/sets.js';
-import { bardRanks, verdict, band } from './engine/aura.js';
-import { ROLE_KEYS, role, METRICS, formatMetric } from './engine/roles.js';
-import { WANT_KEYS, want, candidates, isMagnitude } from './engine/wants.js';
+import { bardRanks, verdict, band, eligible } from './engine/aura.js';
+import { role, METRICS, formatMetric } from './engine/roles.js';
+import { want, candidates, isMagnitude } from './engine/wants.js';
 import { LEVEL_CAP } from './engine/layout.js';
+import { sections } from './groups.js';
 
 // Contexts per level (and per singing bonus, for a set whose aura sings Amplification), kept
 // until the trio, options, bard AAs or files change.
@@ -34,15 +35,20 @@ function ruleValue(rule) {
   return rule.kind === 'spell' ? 'spell' : `${rule.kind}:${rule.key}`;
 }
 
-function gemControls(i, rule, c, spellOptions) {
-  const roles = ROLE_KEYS.filter((k) => (c.members[k] ?? []).length > 0);
-  const wants = WANT_KEYS.filter((k) => candidates(c.pool, k).length > 0);
+// The rules this trio can fill at all, as sections; in an aura gem, only those a song can fill.
+// The rule a gem already holds is always listed, so a select never loses its value.
+function ruleSections(c, auraGem, rule) {
+  const spells = (kind, key) => (kind === 'role' ? c.members[key] ?? [] : candidates(c.pool, key).map(([s]) => s));
+  const ok = (kind, key) => (rule?.kind === kind && rule.key === key)
+    || (auraGem ? spells(kind, key).some((s) => eligible(s)) : spells(kind, key).length > 0);
+  return sections(ok);
+}
+
+function gemControls(i, rule, c, spellOptions, auraGem) {
   const cur = ruleValue(rule);
   let html = `<select data-gem-kind="${i}" aria-label="gem ${i + 1}">
-    ${option('', '— empty —', cur)}
-    <optgroup label="Best for a job">${roles.map((k) => option(`role:${k}`, `best ${role(k).label}`, cur)).join('')}</optgroup>
-    <optgroup label="Buff">${wants.map((k) => option(`want:${k}`, want(k).label, cur)).join('')}</optgroup>
-    <optgroup label="Exactly">${option('spell', 'a spell I choose', cur)}</optgroup>
+    ${option('', '— empty —', cur)}${option('spell', 'a spell I choose', cur)}
+    ${ruleSections(c, auraGem, rule).map(([title, items]) => `<optgroup label="${esc(title)}">${items.map((r) => option(`${r.kind}:${r.key}`, r.name, cur)).join('')}</optgroup>`).join('')}
   </select>`;
   if (rule?.kind === 'role' && role(rule.key)?.metrics.length > 1) {
     const r = role(rule.key);
@@ -163,6 +169,7 @@ export function setsView(state) {
       g.unscribed ? `<span class="badge scribe">better, not scribed: ${esc(g.unscribed.name)}</span>` : '',
       auraBadges(i, a, resolved),
     ].join('');
+    const auraGem = Boolean(a?.band.has(i));
     let got = '';
     if (g.state === 'ok') got = `${spellName(g.spell, st.level)} <span class="val">${esc(valueText(g))}</span><div class="sub">${effects(g.spell)}</div>`;
     else if (g.state === 'later') got = `<span class="none">nothing yet —</span> ${spellName(g.spell, st.level)}`;
@@ -170,10 +177,9 @@ export function setsView(state) {
       const known = state.ds.spells.find((x) => x.id === g.rule.id);
       got = `<span class="none">${known ? `${esc(known.name)} — not a spell this trio can cast` : `spell #${g.rule.id} — not one this page knows`}</span>`;
     } else if (g.state === 'none') got = '<span class="none">nothing in this trio fits</span>';
-    const auraGem = Boolean(a?.band.has(i));
     return `<li class="gem${isNew ? ' changed' : ''}${auraGem ? ' aura' : ''}">
       <span class="n">${i + 1}${auraGem ? '<span class="note-aura" title="an aura gem: its rule chooses only songs the aura sings">♪</span>' : ''}</span>
-      <div class="rule">${gemControls(i, g.rule, c, spellOptions)}
+      <div class="rule">${gemControls(i, g.rule, c, spellOptions, auraGem)}
         <span class="move"><button class="quiet" data-gem-up="${i}" aria-label="move up"${i === 0 ? ' disabled' : ''}>↑</button><button class="quiet" data-gem-down="${i}" aria-label="move down"${i === GEMS - 1 ? ' disabled' : ''}>↓</button></span></div>
       <div class="got">${got}${badges ? `<div class="badges">${badges}</div>` : ''}${hints(i, g, shown, auraGem)}</div>
     </li>`;

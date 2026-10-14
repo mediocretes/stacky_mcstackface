@@ -9,6 +9,7 @@ import { mergeImported } from './engine/sets.js';
 import { bundle, chainCaution, formatMetric, METRICS, HUNTS } from './engine/roles.js';
 import { option, spellName, effects } from './ui.js';
 import { setsView, onSetsChange, onSetsClick, readShareLink } from './sets-view.js';
+import { sections } from './groups.js';
 import * as store from './store.js';
 import { esc, seconds, castTime, target, skill, classes, description } from './format.js';
 
@@ -359,18 +360,6 @@ function bestView() {
     ${absent.length ? `<p class="small">Nothing in this trio for: ${esc(absent.join(', '))}.</p>` : ''}`;
 }
 
-const WANT_GROUPS = [
-  ['Health and defense', ['max_hp', 'armor_class', 'regen', 'instant_heal', 'damage_shield', 'rune', 'invulnerability', 'spell_reflect', 'melee_proc', 'hate_on_attack']],
-  ['Stats', ['strength', 'stamina', 'agility', 'dexterity', 'charisma', 'intelligence', 'wisdom', 'attack']],
-  ['Resists', ['magic_resist', 'fire_resist', 'cold_resist', 'poison_resist', 'disease_resist']],
-  ['Mana and endurance', ['mana_regen', 'hp_to_mana', 'endurance_regen']],
-  ['Cures', ['cure_poison', 'cure_disease', 'cure_curse', 'cure_blindness', 'dispel']],
-  ['Movement and senses', ['movement', 'levitate', 'water_breathing', 'invisibility', 'see_invisible', 'infravision', 'ultravision', 'vision_range', 'see_through', 'sense', 'eye_of_zomm', 'true_north']],
-  ['Travel and escape', ['gate', 'bind_affinity', 'shadow_step', 'feign_death']],
-  ['Pets and summoning', ['summon_pet', 'summon_undead', 'pet_ward', 'pet_reclaim', 'recall_pet', 'pet_size', 'summon_item', 'summon_armor']],
-  ['Appearance', ['model_size', 'illusion']],
-];
-
 function buffsView() {
   const lvl = state.result.level;
   const rows = state.result.wants.filter((w) => w.count > 0);
@@ -397,15 +386,11 @@ function buffsView() {
     ${absent.length ? `<p class="small">Nothing in this trio for: ${esc(absent.join(', '))}.</p>` : ''}`;
 }
 
+// The Buffs tab's rows under the same sections the gem picker uses.
 function grouped(rows) {
-  const seen = new Set();
-  const out = WANT_GROUPS.map(([g, keys]) => {
-    const ws = keys.map((k) => rows.find((w) => w.key === k)).filter(Boolean);
-    ws.forEach((w) => seen.add(w.key));
-    return [g, ws];
-  });
-  out.push(['Other', rows.filter((w) => !seen.has(w.key))]);
-  return out.filter(([, ws]) => ws.length);
+  const byKey = new Map(rows.map((w) => [w.key, w]));
+  return sections((kind, key) => kind === 'want' && byKey.has(key))
+    .map(([title, items]) => [title, items.map((r) => byKey.get(r.key))]);
 }
 
 function spellRows() {
