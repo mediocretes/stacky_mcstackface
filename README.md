@@ -1,5 +1,7 @@
 # Stacky McStackface
 
+**Use it here: https://mediocretes.github.io/stacky_mcstackface/**
+
 A single web page for EverQuest Legends players: pick your three classes and a
 level, and see the best spell your trio can cast for each job — heal, slow, haste, nuke, damage over
 time, buffs — and the spell that replaces it later. Build spell sets that keep themselves current as
