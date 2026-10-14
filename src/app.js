@@ -588,6 +588,9 @@ document.addEventListener('drop', (e) => {
 
 // ---- start --------------------------------------------------------------------------------
 
+const versionTag = document.querySelector('[data-version]');
+if (versionTag) versionTag.textContent = document.querySelector('meta[name=version]')?.content ?? 'dev';
+
 // Development only: on a local server, #load=<dir> reads the two files from <dir> instead of
 // asking for them, so the page can be checked in a headless browser.
 async function devLoad() {

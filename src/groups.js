@@ -43,7 +43,7 @@ export function sections(available) {
   const rest = [...ROLE_KEYS.map(R), ...WANT_KEYS.map(W)].filter(([k, key]) => !named.has(`${k}:${key}`));
   return [...GROUPS, ['Other', rest]]
     .map(([title, items]) => [title, items
-      .filter(([k, key]) => available(k, key))
+      .filter(([k, key]) => (k === 'role' ? role(key) : want(key)) && available(k, key))
       .map(([kind, key]) => ({ kind, key, name: ruleName(kind, key) }))
       .sort((a, b) => sortKey(a).localeCompare(sortKey(b)) || (a.kind === 'role' ? -1 : 1))])
     .filter(([, items]) => items.length);
