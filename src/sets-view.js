@@ -57,7 +57,8 @@ function valueText(g) {
   return '';
 }
 
-const importButton = () => `<label class="button">Import your saved sets from the game<input type="file" accept=".ini" data-import hidden></label>`;
+// Every file is chosen in the panel at the top; this only opens it.
+const importButton = () => '<button class="quiet" data-act="open-files">Import your saved sets from the game</button>';
 
 // A gem holding one exact spell: which rules that spell fills, and what each would pick now.
 function hints(i, g, c) {

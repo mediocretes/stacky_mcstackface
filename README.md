@@ -23,6 +23,9 @@ install, and it works everything out from those.
    - **your saved spell sets**, `<name>_<server>_LO1.ini` (LO2, LO3… for your other class sets).
      Each saved set becomes a set on the Sets tab.
 
+Every file goes in the **Your files** panel at the top. It folds down to a one-line summary once the
+two needed files are in, and again after each file you add; open it any time to add or replace one.
+
 | Tab | What it shows |
 |---|---|
 | **Best picks** | For each ranked job, the best spell you can cast now, the next one that beats it, and every effect each carries. Most jobs can be ranked more than one way (damage per second, per mana, per cast…). |

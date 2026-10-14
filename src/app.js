@@ -15,7 +15,7 @@ import { esc, seconds, castTime, target, skill, classes, description } from './f
 const DEFAULTS = {
   trio: ['BRD', 'SHD', 'SHM'], level: 30, hunting: 'generic', fightTicks: null,
   tab: 'best', metrics: {}, show: 'castable', query: '', sort: 'level',
-  sets: [], activeSet: 0, compareLevel: null,
+  sets: [], activeSet: 0, compareLevel: null, lastImport: null,
 };
 
 const state = {
@@ -30,7 +30,9 @@ const state = {
   pending: { spells: null, dbstr: null }, // files chosen so far; both are needed
   reloading: false, // the file panel is open over an already-loaded dataset
   book: null, // { file, size, names, loadedAt } from a spellbook export, or null
-  note: null, // what the last import did
+  note: null, // what the last file read did
+  fileError: null, // why the last file could not be read
+  filesOpen: false, // the file panel, once the two needed files are in; always open before
 };
 
 const root = document.getElementById('app');
@@ -82,32 +84,49 @@ function parseInWorker(spells, dbstr, meta) {
 
 const FILES = { spells: 'spells_us.txt', dbstr: 'dbstr_us.txt' };
 
-// Which of the two a file is: by its name, or, for a renamed copy, by its first line.
+// What a file is — one of the two client files, a spellbook export or a saved-sets file — by
+// its name, or by its first lines for a renamed copy.
 async function kindOf(file) {
   const n = file.name.toLowerCase();
   if (n === FILES.spells) return 'spells';
   if (n === FILES.dbstr) return 'dbstr';
-  const f = ((await file.slice(0, 8192).text()).split(/\r?\n/)[0] ?? '').split('^');
+  const head = await file.slice(0, 8192).text();
+  const other = importKind(file.name, head);
+  if (other) return other;
+  const f = (head.split(/\r?\n/)[0] ?? '').split('^');
   if (f.length === FIELD_COUNT && /^\d+$/.test(f[0])) return 'spells';
   if (f.length >= 4 && f.length <= 6 && /^\d+$/.test(f[0]) && /^\d+$/.test(f[1])) return 'dbstr';
   return null;
 }
 
-// Files arrive one at a time or together, from either picker or a drop. Each goes to its own
-// place; once both are there they are read.
-async function addFiles(list) {
-  state.error = null;
+// Every picker and every drop comes here. Each file goes to its own place: the two client
+// files wait for each other and are read together; the other two are read at once. The file
+// panel closes after anything is read successfully, and stays open on an error.
+async function takeFiles(list) {
+  state.fileError = null;
+  state.note = null;
+  const others = [];
   for (const file of [...list]) {
     const kind = await kindOf(file);
-    if (kind) state.pending[kind] = file;
-    else if (file.name.toLowerCase() === 'spells_us_str.txt') state.error = 'That is spells_us_str.txt. The one needed is spells_us.txt, without "_str".';
-    else state.error = `${file.name} is not one of the two files: choose ${FILES.spells} or ${FILES.dbstr}.`;
+    if (kind === 'spells' || kind === 'dbstr') state.pending[kind] = file;
+    else if (kind) others.push([kind, file]);
+    else if (file.name.toLowerCase() === 'spells_us_str.txt') state.fileError = 'That is spells_us_str.txt. The one needed is spells_us.txt, without "_str".';
+    else state.fileError = `${file.name} is not a file this page reads. It takes ${FILES.spells}, ${FILES.dbstr}, a spellbook export (…-Spellbook.txt) or saved sets (…_LO1.ini).`;
   }
-  const { spells, dbstr } = state.pending;
-  if (!spells || !dbstr) { render(); return; }
+  let read = false;
+  if (state.pending.spells && state.pending.dbstr) read = await readClientFiles();
+  for (const [kind, file] of others) read = (await readOther(kind, file)) || read;
+  if (read && !state.fileError && state.ds) state.filesOpen = false;
+  if (state.fileError) state.filesOpen = true;
+  recompute();
+  render();
+}
 
+async function readClientFiles() {
+  const { spells, dbstr } = state.pending;
   state.busy = `Reading ${spells.name} (${(spells.size / 1e6).toFixed(0)} MB)…`;
   render();
+  let ok = false;
   try {
     const [a, b] = await Promise.all([spells.arrayBuffer(), dbstr.arrayBuffer()]);
     const meta = {
@@ -115,55 +134,43 @@ async function addFiles(list) {
       dbstrFile: { size: dbstr.size, modified: dbstr.lastModified },
       loadedAt: Date.now(),
     };
-    const ds = await parseInWorker(a, b, meta);
-    state.ds = ds;
-    state.saved = await store.saveDataset(ds);
+    state.ds = await parseInWorker(a, b, meta);
+    state.saved = await store.saveDataset(state.ds);
     state.reloading = false;
-    recompute();
+    ok = true;
   } catch (e) {
-    state.error = e.message;
+    state.fileError = e.message;
   }
   state.pending = { spells: null, dbstr: null };
   state.busy = null;
-  render();
+  return ok;
 }
 
-// The two optional files, from either picker or a drop: a spellbook export, which marks what
-// you have scribed, and the game's saved sets, which become sets here.
-async function importFiles(list) {
-  state.error = null;
-  state.note = null;
-  for (const file of [...list]) {
-    const head = await file.slice(0, 4096).text();
-    const kind = importKind(file.name, head);
-    try {
-      if (kind === 'spellbook') {
-        const book = parseSpellbook(await file.text());
-        state.book = { file: file.name, size: book.size, names: [...book.keys()], loadedAt: Date.now() };
-        await store.saveBook({ file: state.book.file, size: state.book.size, names: state.book.names, loadedAt: state.book.loadedAt });
-        const mine = state.ds ? recomputeCount() : null;
-        state.note = `Spellbook loaded: ${book.size} spells${mine !== null ? `, ${mine} of them ones this trio can cast` : ''}.`;
-      } else if (kind === 'loadouts') {
-        const loadouts = parseLoadouts(await file.text());
-        if (!loadouts.length) throw new Error(`${file.name} has no saved spell sets that are in use.`);
-        const { sets, added, replaced } = mergeImported(state.settings.sets ?? [], loadouts);
-        const first = sets.findIndex((x) => x.name === loadouts[0].name);
-        set({ sets, activeSet: first, tab: 'sets' }, { compute: false });
-        state.note = `Imported ${loadouts.map((l) => l.name).join(', ')} from ${file.name}` +
-          (replaced.length ? ` (replacing your ${replaced.join(', ')})` : '') +
-          '. Each gem holds exactly the spell the game has there; the hints beside a gem show which rules it fills.';
-      } else {
-        throw new Error(`${file.name} is neither a spellbook export (…-Spellbook.txt) nor a saved-sets file (…_LO1.ini).`);
-      }
-    } catch (e) {
-      state.error = e.message;
+async function readOther(kind, file) {
+  try {
+    if (kind === 'spellbook') {
+      const book = parseSpellbook(await file.text());
+      state.book = { file: file.name, size: book.size, names: [...book.keys()], loadedAt: Date.now() };
+      await store.saveBook({ file: state.book.file, size: state.book.size, names: state.book.names, loadedAt: state.book.loadedAt });
+      const mine = state.ds ? scribedCount() : null;
+      state.note = `Spellbook read: ${book.size} spells${mine !== null ? `, ${mine} of them ones this trio can cast` : ''}. Picks now prefer what you have scribed.`;
+    } else {
+      const loadouts = parseLoadouts(await file.text());
+      if (!loadouts.length) throw new Error(`${file.name} has no saved spell sets that are in use.`);
+      const { sets, replaced } = mergeImported(state.settings.sets ?? [], loadouts);
+      const names = loadouts.map((l) => l.name);
+      set({ sets, activeSet: sets.findIndex((x) => x.name === names[0]), tab: 'sets', lastImport: { file: file.name, names } }, { compute: false });
+      state.note = `Imported ${names.join(', ')} from ${file.name}${replaced.length ? ` (replacing your ${replaced.join(', ')})` : ''}. ` +
+        'Each gem holds exactly the spell the game has there; the chips beside a gem show which rules it fills.';
     }
+    return true;
+  } catch (e) {
+    state.fileError = e.message;
+    return false;
   }
-  recompute();
-  render();
 }
 
-function recomputeCount() {
+function scribedCount() {
   const set = owned();
   return state.ds.spells.filter((s) => set.has(s.name) && state.settings.trio.some((c) => {
     const l = s.levels[CLASSES.indexOf(c)];
@@ -173,43 +180,89 @@ function recomputeCount() {
 
 // ---- rendering ----------------------------------------------------------------------------
 
-function fileStatus() {
-  const s = state.ds.source;
-  const date = s.spellsFile?.modified ? new Date(s.spellsFile.modified).toLocaleDateString() : 'unknown date';
-  return `<div class="files loaded">
-    <p>Using your client files: <b>spells_us.txt</b> from ${esc(date)}, ${s.kept.toLocaleString()} spells
-    any class can cast at 1–${LEVEL_CAP}.${state.saved === false ? ' <span class="warn">This browser would not store them, so you will need to load them again next visit.</span>' : ''}</p>
-    <p class="actions"><button class="button" data-act="reload">Load newer files</button>
-    <button data-act="forget" class="quiet">Forget my files</button></p>
-  </div>`;
-}
+const picker = (accept) => `<input type="file" accept="${accept}" data-pick hidden>`;
+const fileDate = (ms) => (ms ? new Date(ms).toLocaleDateString() : 'an unknown date');
 
-function fileSlot(kind, primary) {
+function clientSlot(kind, primary) {
   const f = state.pending[kind];
-  const input = `<input type="file" accept=".txt" data-file-slot="${kind}" hidden>`;
   if (f) {
     return `<li class="slot done"><span class="tick">✓</span> <b>${esc(FILES[kind])}</b>
-      <span class="small">${(f.size / 1e6).toFixed(1)} MB</span>
-      <label class="quiet">change${input}</label></li>`;
+      <span class="small">${(f.size / 1e6).toFixed(1)} MB</span> <label class="quiet">change${picker('.txt')}</label></li>`;
   }
-  return `<li class="slot"><label class="button${primary ? ' primary' : ''}">Choose ${esc(FILES[kind])}${input}</label></li>`;
+  return `<li class="slot"><label class="button${primary ? ' primary' : ''}">Choose ${esc(FILES[kind])}${picker('.txt')}</label></li>`;
 }
 
-function fileIntro() {
-  const reloading = state.ds && state.reloading;
-  const firstMissing = state.pending.spells ? 'dbstr' : 'spells';
-  return `<div class="files" data-drop>
-    <h2>${reloading ? 'Load newer files' : '1 · Load your client files'}</h2>
-    <p>Two files from your EverQuest Legends folder — the one with <code>eqgame.exe</code> in it.
-    Choose them one at a time, in either order.</p>
-    <ol class="slots">${fileSlot('spells', firstMissing === 'spells')}${fileSlot('dbstr', firstMissing === 'dbstr')}</ol>
-    <p class="small"><b>Tip:</b> the folder holds thousands of files, so don't scroll for it. On Windows, type
-    <code>${esc(FILES[firstMissing])}</code> into the <i>File name</i> box and press Enter; on a Mac, start typing the
-    name and the list jumps to it. You can also drop either file, or both, on this box.</p>
-    <p class="small">They are read here, in your browser. Nothing is uploaded; this page has no server.
-    After the first time it remembers what it needs, so you only come back here after a game patch.</p>
-    ${reloading ? '<p class="actions"><button class="quiet" data-act="cancel-reload">Cancel</button></p>' : ''}
-  </div>`;
+function neededFiles() {
+  if (state.ds && !state.reloading) {
+    const s = state.ds.source;
+    return `<ol class="slots">
+        <li class="slot done"><span class="tick">✓</span> <b>${FILES.spells}</b> <span class="small">from ${esc(fileDate(s.spellsFile?.modified))},
+          ${s.kept.toLocaleString()} spells any class can cast at 1–${LEVEL_CAP}</span></li>
+        <li class="slot done"><span class="tick">✓</span> <b>${FILES.dbstr}</b> <span class="small">from ${esc(fileDate(s.dbstrFile?.modified))}</span></li>
+      </ol>
+      ${state.saved === false ? '<p class="warn">This browser would not store them, so you will need to load them again next visit.</p>' : ''}
+      <p class="actions"><button class="button" data-act="reload">Load newer files</button>
+        <span class="small">after a game patch — choose both again</span></p>`;
+  }
+  const first = state.pending.spells ? 'dbstr' : 'spells';
+  return `<p>Choose them one at a time, in either order.</p>
+    <ol class="slots">${clientSlot('spells', first === 'spells')}${clientSlot('dbstr', first === 'dbstr')}</ol>
+    ${state.reloading ? '<p class="actions"><button class="quiet" data-act="cancel-reload">Cancel</button></p>' : ''}`;
+}
+
+function optionalFiles() {
+  const b = state.book;
+  const last = state.settings.lastImport;
+  const book = b
+    ? `<li class="slot done"><span class="tick">✓</span> <b>${esc(b.file)}</b> <span class="small">your spellbook, ${b.size} spells</span>
+        <label class="quiet">replace${picker('.txt')}</label> <button class="quiet" data-act="forget-book">forget</button></li>`
+    : `<li class="slot"><label class="button">Choose your spellbook export${picker('.txt')}</label>
+        <span class="small">In game, <code>/outputfile spellbook</code> writes <code>&lt;name&gt;_&lt;server&gt;-&lt;class&gt;-Spellbook.txt</code>.
+        Picks then prefer what you have scribed and mark what you have not.</span></li>`;
+  const sets = last
+    ? `<li class="slot done"><span class="tick">✓</span> <b>${esc(last.file)}</b> <span class="small">imported ${esc(last.names.join(', '))}</span>
+        <label class="quiet">import again or another${picker('.ini')}</label></li>`
+    : `<li class="slot"><label class="button">Choose your saved sets${picker('.ini')}</label>
+        <span class="small"><code>&lt;name&gt;_&lt;server&gt;_LO1.ini</code> (LO2, LO3… for your other class sets). Each saved set
+        becomes a set on the Sets tab.</span></li>`;
+  return `<ul class="slots">${book}${sets}</ul>`;
+}
+
+function filesSummary() {
+  const s = state.ds.source;
+  const parts = [`${FILES.spells} from ${fileDate(s.spellsFile?.modified)}`];
+  if (state.book) parts.push(`spellbook (${state.book.size} spells)`);
+  if (state.settings.lastImport) parts.push(`saved sets: ${state.settings.lastImport.names.join(', ')}`);
+  return parts.join(' · ');
+}
+
+function filesPanel() {
+  const open = state.filesOpen || !state.ds;
+  const head = state.ds
+    ? `<button class="files-head" data-act="toggle-files" aria-expanded="${open}">
+        <span class="chev" aria-hidden="true">${open ? '▾' : '▸'}</span><h2>Your files</h2>
+        ${open ? '' : `<span class="files-summary">${esc(filesSummary())}</span>`}</button>`
+    : '<div class="files-head"><h2>1 · Your files</h2></div>';
+  const first = state.pending.spells ? 'dbstr' : 'spells';
+  const body = `<div class="files-body">
+      <h3>Needed <span class="small">from your EverQuest Legends folder, the one with <code>eqgame.exe</code> in it</span></h3>
+      ${neededFiles()}
+      <h3>Optional <span class="small">from the same folder</span></h3>
+      ${optionalFiles()}
+      <p class="small"><b>Tip:</b> the folder holds thousands of files, so don't scroll for one. On Windows, type its name
+      (say <code>${esc(state.ds && !state.reloading ? 'spells_us.txt' : FILES[first])}</code>) into the <i>File name</i> box and press Enter;
+      on a Mac, start typing the name and the list jumps to it. You can also drop any of these files on this panel.</p>
+      <p class="small">Files are read here, in your browser. Nothing is uploaded; this page has no server. It remembers
+      what it needs, so the two needed files only come back after a game patch.</p>
+      ${state.ds ? '<p class="actions"><button class="quiet" data-act="forget">Forget my client files</button></p>' : ''}
+    </div>`;
+  return `<section class="files-panel${open ? ' open' : ''}" data-drop>
+    ${head}
+    ${open ? body : ''}
+    ${state.busy ? `<p class="busy">${esc(state.busy)}</p>` : ''}
+    ${state.fileError ? `<p class="error">${esc(state.fileError)}</p>` : ''}
+    ${state.note ? `<p class="note">${esc(state.note)}</p>` : ''}
+  </section>`;
 }
 
 function incomingBanner() {
@@ -219,48 +272,24 @@ function incomingBanner() {
     <button class="button" data-act="use-shared">Use them</button> <button class="quiet" data-act="ignore-shared">Ignore</button></div>`;
 }
 
-function extras() {
-  const b = state.book;
-  const book = b
-    ? `<p>Spellbook: <b>${esc(b.file)}</b>, ${b.size} spells. Spells you have not scribed are marked, and picks prefer
-       the ones you have. <label class="quiet">Load a newer one<input type="file" accept=".txt" data-import hidden></label>
-       <button class="quiet" data-act="forget-book">Forget it</button></p>`
-    : `<p><label class="button">Add your spellbook<input type="file" accept=".txt" data-import hidden></label>
-       <span class="small">In game, type <code>/outputfile spellbook</code>; it writes
-       <code>&lt;name&gt;_&lt;server&gt;-&lt;class&gt;-Spellbook.txt</code> to your EverQuest Legends folder. Picks then
-       prefer spells you have, and mark the ones you have not scribed.</span></p>`;
-  return `<details class="extras"${b ? '' : ' open'}><summary>Your spellbook and saved sets (optional)</summary>
-    ${book}
-    <p><label class="button">Import your saved sets<input type="file" accept=".ini" data-import hidden></label>
-    <span class="small">From <code>&lt;name&gt;_&lt;server&gt;_LO1.ini</code> (LO2, LO3… for your other class sets) in the same
-    folder. Each saved set becomes a set on the Sets tab.</span></p>
-  </details>`;
-}
-
 function setup() {
   const st = state.settings;
   const classSelect = (i) => `<select data-trio="${i}" aria-label="class ${i + 1}">${CLASSES.map((c) => option(c, `${c} — ${CLASS_NAMES[c]}`, st.trio[i])).join('')}</select>`;
-  return `<section class="setup">
-    ${state.ds && !state.reloading ? fileStatus() : fileIntro()}
-    <div class="trio${state.ds ? '' : ' muted'}">
-      <h2>${state.ds ? '' : '2 · '}Your trio</h2>
-      <div class="row">${classSelect(0)}${classSelect(1)}${classSelect(2)}
-        <label class="level">Level <input type="number" min="1" max="${LEVEL_CAP}" value="${esc(st.level)}" data-level></label></div>
-      <p class="small">A trio's level is the lowest of its three classes; spells above it are shown as upgrades to come.</p>
-      <details${st.hunting !== 'generic' || st.fightTicks ? ' open' : ''}><summary>Options</summary>
-        <div class="row">
-          <label>Fighting <select data-hunting>${HUNTS.map((h) => option(h, h === 'generic' ? 'anything' : h, st.hunting)).join('')}</select></label>
-          <label>Fight length <input type="number" min="1" max="200" placeholder="full" value="${esc(st.fightTicks ?? '')}" data-fight> ticks</label>
-        </div>
-        <p class="small">"Fighting" admits spells that only work on undead, summoned or animals. Fight length
-        cuts damage-over-time off when the mob dies (a tick is 6 seconds); leave it empty to count the full duration.</p>
-      </details>
-    </div>
-    ${state.ds && !state.reloading ? extras() : ''}
+  return `<section class="setup${state.ds ? '' : ' muted'}">
+    <h2>${state.ds ? '' : '2 · '}Your trio</h2>
+    <div class="row">${classSelect(0)}${classSelect(1)}${classSelect(2)}
+      <label class="level">Level <input type="number" min="1" max="${LEVEL_CAP}" value="${esc(st.level)}" data-level></label></div>
+    <p class="small">A trio's level is the lowest of its three classes; spells above it are shown as upgrades to come.</p>
+    <details${st.hunting !== 'generic' || st.fightTicks ? ' open' : ''}><summary>Options</summary>
+      <div class="row">
+        <label>Fighting <select data-hunting>${HUNTS.map((h) => option(h, h === 'generic' ? 'anything' : h, st.hunting)).join('')}</select></label>
+        <label>Fight length <input type="number" min="1" max="200" placeholder="full" value="${esc(st.fightTicks ?? '')}" data-fight> ticks</label>
+      </div>
+      <p class="small">"Fighting" admits spells that only work on undead, summoned or animals. Fight length
+      cuts damage-over-time off when the mob dies (a tick is 6 seconds); leave it empty to count the full duration.</p>
+    </details>
     ${state.incoming ? incomingBanner() : ''}
-    ${state.busy ? `<p class="busy">${esc(state.busy)}</p>` : ''}
     ${state.error ? `<p class="error">${esc(state.error)}</p>` : ''}
-    ${state.note ? `<p class="note">${esc(state.note)}</p>` : ''}
   </section>`;
 }
 
@@ -413,7 +442,7 @@ function main() {
 
 function render() {
   const focus = document.activeElement?.matches?.('[data-query]') ? document.activeElement.selectionStart : null;
-  root.innerHTML = setup() + main();
+  root.innerHTML = filesPanel() + setup() + main();
   if (focus !== null) {
     const q = root.querySelector('[data-query]');
     if (q) { q.focus(); q.setSelectionRange(focus, focus); }
@@ -425,8 +454,7 @@ function render() {
 document.addEventListener('change', (e) => {
   const el = e.target;
   if (state.ds && onSetsChange(el, state, set)) return;
-  if (el.matches('[data-file-slot]')) addFiles(el.files);
-  else if (el.matches('[data-import]')) importFiles(el.files);
+  if (el.matches('[data-pick]')) takeFiles(el.files);
   else if (el.matches('[data-trio]')) {
     const trio = [...state.settings.trio];
     trio[Number(el.dataset.trio)] = el.value;
@@ -466,10 +494,16 @@ document.addEventListener('click', (e) => {
     return;
   }
   if (state.ds && onSetsClick(el, state, set, render)) return;
+  if (el.dataset.act === 'toggle-files' || el.dataset.act === 'open-files') {
+    state.filesOpen = el.dataset.act === 'open-files' ? true : !state.filesOpen;
+    render();
+    if (el.dataset.act === 'open-files') window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
   if (el.dataset.act === 'reload' || el.dataset.act === 'cancel-reload') {
     state.reloading = el.dataset.act === 'reload';
     state.pending = { spells: null, dbstr: null };
-    state.error = null;
+    state.fileError = null;
     render();
     return;
   }
@@ -477,6 +511,7 @@ document.addEventListener('click', (e) => {
     store.forgetBook();
     state.book = null;
     state.note = null;
+    state.fileError = null;
     recompute();
     render();
     return;
@@ -505,11 +540,20 @@ window.addEventListener('hashchange', () => {
   if (p) { state.incoming = p; render(); }
 });
 
-document.addEventListener('dragover', (e) => { if (e.target.closest('[data-drop]')) e.preventDefault(); });
+document.addEventListener('dragover', (e) => {
+  const panel = e.target.closest('[data-drop]');
+  if (!panel) return;
+  e.preventDefault();
+  panel.classList.add('drag');
+});
+document.addEventListener('dragleave', (e) => {
+  const panel = e.target.closest('[data-drop]');
+  if (panel && !panel.contains(e.relatedTarget)) panel.classList.remove('drag');
+});
 document.addEventListener('drop', (e) => {
   if (!e.target.closest('[data-drop]')) return;
   e.preventDefault();
-  addFiles(e.dataTransfer.files);
+  takeFiles(e.dataTransfer.files);
 });
 
 // ---- start --------------------------------------------------------------------------------
@@ -520,7 +564,7 @@ async function devLoad() {
   const m = location.hash.match(/^#load=(.+)$/);
   if (!m || !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return false;
   const get = async (n) => new File([await (await fetch(`${m[1]}/${n}`)).arrayBuffer()], n);
-  await addFiles([await get('spells_us.txt'), await get('dbstr_us.txt')]);
+  await takeFiles([await get('spells_us.txt'), await get('dbstr_us.txt')]);
   return true;
 }
 
