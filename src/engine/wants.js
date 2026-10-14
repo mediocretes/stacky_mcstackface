@@ -13,6 +13,7 @@ export const want = (key) => SPEC.wants[key];
 // The slots through which this spell covers this want, or null where it does not.
 export function coveringSlots(spell, key) {
   const w = SPEC.wants[key];
+  if (!w) return null; // a rule this vocabulary does not know covers nothing
   if (spell.beneficial === 0) return null; // a want is always something you want on you
   if (w.needs_duration && spell.ticks !== PERMANENT && spell.ticks === 0) return null;
   if (!w.pet && PET_TARGETS.includes(spell.target)) return null;

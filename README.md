@@ -132,6 +132,12 @@ private desktop tool, and before a release it is also checked against that tool 
 On `localhost` only, `#load=<folder>` reads the two files from that folder instead of asking for
 them, so the page can be tested in a headless browser.
 
+**Deploying** is automatic: every push to `main` runs `.github/workflows/pages.yml`, which runs the
+tests and publishes a copy made by `tools/stamp.mjs`. That copy has every script and stylesheet
+address stamped with the commit (`wants.js?v=abc1234`). GitHub Pages lets browsers keep each file
+for 10 minutes, and without the stamp a returning visitor could get the new page with some old
+scripts — which is how the first Safari report happened. The footer shows the version you have.
+
 ## Roadmap
 
 - Warn when two buffs in a set use the same effect slot (songs already are).

@@ -209,3 +209,4 @@ ol.gems li.gem.aura.changed { background: var(--warn-bg); }
 .badge.aura { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--ink); }
 .aura-box { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; margin: 8px 0; }
 .aura-box p { margin: 6px 0; }
+footer .version { font-size: 0.75rem; }
