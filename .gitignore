@@ -1,0 +1,13 @@
+# Client files and anything read from them. This repository holds code only: game data,
+# logs and spellbook exports must never be committed, even as test fixtures.
+spells_us.txt
+spells_us_str.txt
+dbstr_us.txt
+*_us.txt
+*-Spellbook.txt
+*_LO*.ini
+eqlog_*.txt
+Logs/
+
+.DS_Store
+node_modules/
