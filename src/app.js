@@ -34,6 +34,7 @@ const state = {
   note: null, // what the last file read did
   fileError: null, // why the last file could not be read
   filesOpen: false, // the file panel, once the two needed files are in; always open before
+  sections: {}, // open or closed, for each <details> the player has toggled or edited inside
 };
 
 const root = document.getElementById('app');
@@ -278,12 +279,19 @@ function incomingBanner() {
 function bardInputs(st) {
   const b = st.bard ?? {};
   const field = (key, label, max) => `<label>${label} <input type="number" min="0" max="${max}" value="${esc(b[key] ?? 0)}" data-bard="${key}"></label>`;
-  return `<details class="bard"${b.aura || b.jamFest || b.singingMastery ? '' : ' open'}><summary>Bard AAs</summary>
+  return `<details class="bard" ${details('bard', !(b.aura || b.jamFest || b.singingMastery))}><summary>Bard AAs</summary>
     <div class="row">${field('aura', 'Symphonic Aura', 12)}${field('jamFest', 'Jam Fest', 5)}${field('singingMastery', 'Singing Mastery', 4)}</div>
     <p class="small">Ranks, from your AA window. Jam Fest makes songs read 1, 3, 5, 6 or 7 levels higher. Singing Mastery's
     bonus is applied to Singing songs' damage shields, the one effect it has been measured on. Symphonic Aura's rank is how many
     songs a set that runs it gets sung for it (on the Sets tab).</p>
   </details>`;
+}
+
+// A collapsible section stays the way the player left it. Its first state comes from `first`;
+// after any toggle, or any edit inside it, the page remembers and never changes it on its own.
+function details(name, first) {
+  const open = name in state.sections ? state.sections[name] : first;
+  return `data-section="${name}"${open ? ' open' : ''}`;
 }
 
 function setup() {
@@ -294,7 +302,7 @@ function setup() {
     <div class="row">${classSelect(0)}${classSelect(1)}${classSelect(2)}
       <label class="level">Level <input type="number" min="1" max="${LEVEL_CAP}" value="${esc(st.level)}" data-level></label></div>
     <p class="small">A trio's level is the lowest of its three classes; spells above it are shown as upgrades to come.</p>
-    <details${st.hunting !== 'generic' || st.fightTicks ? ' open' : ''}><summary>Options</summary>
+    <details ${details('options', st.hunting !== 'generic' || Boolean(st.fightTicks))}><summary>Options</summary>
       <div class="row">
         <label>Fighting <select data-hunting>${HUNTS.map((h) => option(h, h === 'generic' ? 'anything' : h, st.hunting)).join('')}</select></label>
         <label>Fight length <input type="number" min="1" max="200" placeholder="full" value="${esc(st.fightTicks ?? '')}" data-fight> ticks</label>
@@ -455,19 +463,36 @@ function main() {
   </section>`;
 }
 
+// The focused control, as a selector that finds its replacement after the page is redrawn.
+function focusKey(el) {
+  if (!el || el === document.body || !root.contains(el)) return null;
+  const a = [...el.attributes].find((x) => x.name.startsWith('data-'));
+  return a ? `[${a.name}${a.value ? `="${CSS.escape(a.value)}"` : ''}]` : null;
+}
+
 function render() {
-  const focus = document.activeElement?.matches?.('[data-query]') ? document.activeElement.selectionStart : null;
+  const active = document.activeElement;
+  const key = focusKey(active);
+  const caret = active?.matches?.('[data-query]') ? active.selectionStart : null;
   root.innerHTML = filesPanel() + setup() + main();
-  if (focus !== null) {
-    const q = root.querySelector('[data-query]');
-    if (q) { q.focus(); q.setSelectionRange(focus, focus); }
+  const again = key && root.querySelector(key);
+  if (again) {
+    again.focus();
+    if (caret !== null) again.setSelectionRange(caret, caret);
   }
 }
 
 // ---- events -------------------------------------------------------------------------------
 
+// <details> fires `toggle` without bubbling, so listen in the capture phase.
+document.addEventListener('toggle', (e) => {
+  if (e.target.matches?.('details[data-section]')) state.sections[e.target.dataset.section] = e.target.open;
+}, true);
+
 document.addEventListener('change', (e) => {
   const el = e.target;
+  const section = el.closest?.('details[data-section]');
+  if (section) state.sections[section.dataset.section] = section.open;
   if (state.ds && onSetsChange(el, state, set)) return;
   if (el.matches('[data-pick]')) takeFiles(el.files);
   else if (el.matches('[data-trio]')) {
