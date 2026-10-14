@@ -199,3 +199,13 @@ section.files-panel.drag { outline: 2px dashed var(--accent); outline-offset: 4p
 ul.slots { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 10px; }
 .slot .small { flex: 1 1 260px; }
 section.setup.muted { opacity: 0.55; }
+
+details.bard { margin-top: 8px; }
+details.bard input[type="number"] { width: 4em; }
+label.check { display: inline-flex; gap: 6px; align-items: center; }
+ol.gems li.gem.aura { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+ol.gems li.gem.aura.changed { background: var(--warn-bg); }
+.note-aura { display: block; color: var(--accent); font-size: 0.9rem; }
+.badge.aura { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--ink); }
+.aura-box { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; margin: 8px 0; }
+.aura-box p { margin: 6px 0; }

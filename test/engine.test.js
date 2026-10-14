@@ -11,12 +11,13 @@ import { buildPool } from '../src/engine/pool.js';
 import { classify, calibrateBurst, rank, bundle, formatMetric } from '../src/engine/roles.js';
 import { candidates, coverage } from '../src/engine/wants.js';
 import { analyze } from '../src/engine/analysis.js';
-import { context, resolveSet, nextChanges, rulesFor, mergeImported } from '../src/engine/sets.js';
+import { context, resolveSet, nextChanges, rulesFor, mergeImported, resolveWithAura, auraTemplate } from '../src/engine/sets.js';
+import { verdict, band, walk, conflicts } from '../src/engine/aura.js';
 import { parseSpellbook, parseLoadouts, importKind } from '../src/engine/imports.js';
 
 function row({
   id, name, levels = {}, slots = '', cast = 2500, recovery = 1500, reuse = 0, mana = 10,
-  beneficial = 0, target = 5, durFormula = 0, durCap = 0, category = 0, subcategory = 0, notPlayer = 0,
+  beneficial = 0, target = 5, durFormula = 0, durCap = 0, category = 0, subcategory = 0, notPlayer = 0, skill = 0,
 }) {
   const f = Array(FIELD_COUNT).fill('0');
   Object.assign(f, {
@@ -24,7 +25,7 @@ function row({
     [F.reuse]: String(reuse), [F.mana]: String(mana), [F.beneficial]: String(beneficial),
     [F.target]: String(target), [F.durFormula]: String(durFormula), [F.durCap]: String(durCap),
     [F.category]: String(category), [F.subcategory]: String(subcategory), [F.desc]: String(id),
-    [F.notPlayer]: String(notPlayer), [F.resist]: '1', [F.slots]: slots,
+    [F.notPlayer]: String(notPlayer), [F.resist]: '1', [F.slots]: slots, [F.skill]: String(skill),
   });
   CLASSES.forEach((c, i) => { f[F.classBase + i] = String(levels[c] ?? 255); });
   return f.join('^');
@@ -195,4 +196,88 @@ test('spellbook: picks prefer what you have scribed and name the better one you 
   // An imported gem holding Test Slow: it fills the slow role, whose pick (with this book) is itself.
   const hints = rulesFor(c.byId.get(2), c);
   assert.deepEqual(hints.map((h) => [h.rule.kind, h.rule.key, h.pick.spell.name]), [['role', 'slow', 'Test Slow']]);
+});
+
+// ---- the Symphonic Aura, on synthetic songs ----------------------------------------------------
+const song = (o) => row({ mana: 0, reuse: 0, beneficial: 1, skill: 41, durFormula: 5, ...o });
+const SONGS = [
+  song({ id: 20, name: 'Test Haste Song', levels: { BRD: 5 }, slots: '1|11|110|0|101|130', target: 6, category: 6 }),
+  row({ id: 21, name: 'Test Spell Haste', levels: { SHM: 5 }, slots: '1|11|140|0|100|0', beneficial: 1, target: 51, durFormula: 3, category: 6 }),
+  song({ id: 22, name: 'Test Shield Song', levels: { BRD: 8 }, slots: '1|59|-6|0|100|0', target: 41 }),
+  song({ id: 23, name: 'Test Amp', levels: { BRD: 10 }, slots: '1|118|2|0|110|28', target: 6 }),
+  song({ id: 24, name: 'Test Lull Song', levels: { BRD: 6 }, slots: '1|18|1|0|100|0', target: 5, beneficial: 0 }),
+  song({ id: 25, name: 'Test Paid Song', levels: { BRD: 7 }, slots: '1|4|10|0|100|0', target: 41, mana: 10 }),
+  song({ id: 26, name: 'Test Other Haste Song', levels: { BRD: 9 }, slots: '2|11|105|0|100|0', target: 41, skill: 70, category: 6 }),
+  song({ id: 27, name: 'Test Small Shield Song', levels: { BRD: 9 }, slots: '1|59|-3|0|100|0', target: 41, skill: 70 }),
+].join('\n');
+const dsA = parseClientFiles(`${SPELLS}\n${SONGS}`, `${DBSTR}\n6^5^Haste^0`);
+const BTRIO = ['BRD', 'SHM', 'WIZ'];
+const bardAt = (bard) => {
+  const cache = new Map();
+  const settings = { trio: BTRIO, bard };
+  return [settings, (lv, extra = 0) => cache.get(`${lv}:${extra}`) ?? (cache.set(`${lv}:${extra}`, context(dsA, settings, lv, null, extra)), cache.get(`${lv}:${extra}`))];
+};
+
+test('aura: which songs it sings', () => {
+  const [, at] = bardAt({});
+  const by = (id) => at(20).byId.get(id);
+  assert.equal(verdict(by(20)).pulsed, true, 'self only');
+  assert.equal(verdict(by(22)).pulsed, true, 'group');
+  assert.equal(verdict(by(24)).pulsed, false, 'single target');
+  assert.match(verdict(by(25)).why, /mana/);
+  assert.equal(verdict(by(21)).why, 'not a bard song');
+  assert.deepEqual([...band(3)].sort((a, b) => a - b), [11, 12, 13]);
+});
+
+test('aura: the walk up from the last gem — pulsed, skipped, dead', () => {
+  const [, at] = bardAt({});
+  const c = at(20);
+  const pin = (id) => ({ kind: 'spell', id });
+  const gems = Array(14).fill(null);
+  gems[13] = pin(20); gems[12] = pin(21); gems[11] = pin(22); gems[2] = pin(26);
+  const w = walk(resolveSet(gems, c), 2);
+  assert.deepEqual(w.pulsed, [13, 11], 'the spell at 13 is passed over and the aura reaches 12');
+  assert.deepEqual(w.skipped, [12]);
+  assert.deepEqual(w.dead, [2], 'an aura song the aura does not reach cannot be sung by hand');
+});
+
+test('aura: rules in aura gems choose only aura songs', () => {
+  const [settings, at] = bardAt({ aura: 1 });
+  const gems = [...Array(13).fill(null), { kind: 'role', key: 'haste' }];
+  assert.equal(resolveSet(gems, at(20))[13].spell.name, 'Test Spell Haste', 'outside an aura, the bigger spell haste wins');
+  const r = resolveWithAura(gems, settings, 20, at, { aura: true });
+  assert.equal(r.resolved[13].spell.name, 'Test Haste Song');
+  assert.deepEqual(r.aura.pulsed, [13]);
+  assert.deepEqual(rulesFor(at(20).byId.get(20), at(20), { auraOnly: true }).map((h) => h.pick.spell.name), ['Test Haste Song']);
+});
+
+test('aura: Jam Fest levels and the singing bonus', () => {
+  const [, plain] = bardAt({});
+  const [, bard] = bardAt({ jamFest: 2, singingMastery: 1 });
+  assert.equal(plain(20).byId.get(20).slots[0].value, 120);
+  assert.equal(bard(20).byId.get(20).slots[0].value, 121, 'Jam Fest 2: the song reads at 23');
+  assert.equal(plain(20).byId.get(22).slots[0].value, 6);
+  assert.equal(bard(20).byId.get(22).slots[0].value, 7, 'Singing Mastery 1: 6 × 1.2, rounded down');
+  assert.equal(bard(20).byId.get(27).slots[0].value, 3, 'a percussion song takes no singing bonus');
+  assert.equal(bard(20).byId.get(21).slots[0].value, 140, 'a spell takes neither');
+});
+
+test('aura: Amplification among the pulsed songs raises the shields that land', () => {
+  const [settings, at] = bardAt({ aura: 2, jamFest: 2, singingMastery: 1 });
+  const gems = [...Array(12).fill(null), { kind: 'spell', id: 22 }, { kind: 'spell', id: 23 }];
+  const r = resolveWithAura(gems, settings, 20, at, { aura: true });
+  assert.equal(r.aura.amp, 5, 'Amplification 2 + 23/6');
+  assert.equal(r.aura.singing, 7);
+  assert.equal(r.resolved[12].spell.slots[0].value, 10, '6 × 1.7');
+});
+
+test('aura: songs in each other\'s way', () => {
+  const [, at] = bardAt({});
+  const c = at(20);
+  const [shieldBig, shieldSmall, hasteA, hasteB] = [22, 27, 20, 26].map((id) => c.byId.get(id));
+  const refused = conflicts([shieldBig, shieldSmall]);
+  assert.deepEqual(refused.map((x) => [x.kind, x.keep.name, x.refuse.name]), [['refused', 'Test Shield Song', 'Test Small Shield Song']]);
+  const haste = conflicts([hasteA, hasteB]);
+  assert.deepEqual(haste.map((x) => [x.kind, x.keep.name]), [['haste', 'Test Haste Song']], 'hastes never add, whatever the slot');
+  assert.deepEqual(auraTemplate(c, 5).map((r) => r.key), ['haste', 'damage_shield', 'singing_amplification']);
 });

@@ -11,6 +11,13 @@ import { CLASSES, LEVEL_CAP, RESIST } from './layout.js';
 import { resolve, durationTicks, PERMANENT, UnknownFormula } from './formulas.js';
 import { toI } from './layout.js';
 
+const BRD = CLASSES.indexOf('BRD');
+const SINGING = 41; // the spell file's skill code for songs sung rather than played
+const DAMAGE_SHIELD = 59;
+
+// A bard song: a row a bard can learn. Its level is the bard's, whoever else can cast it.
+export const isSong = (row) => row.levels[BRD] >= 1 && row.levels[BRD] <= 254;
+
 // Rows in these categories cannot occupy a spell gem; they are a different UI.
 const UNGEMMABLE = new Set(['Disciplines', 'Combat Abilities']);
 const ITEM_SPAS = new Set([32, 109]);
@@ -36,9 +43,16 @@ export function parseSlots(raw, level, ds, { ticks = 0, strict = true, context, 
 
 // trio: three class codes. level: the trio's level. fightTicks: cut DoTs off at this length.
 // owned: the spell names in your spellbook, or null when none was given.
+// bard: what the bard's AAs do to songs, both measured in the log —
+//   songLevels  Jam Fest: songs resolve this many levels above the trio's
+//   singing     tenths added to the singing bonus (Singing Mastery 2 a rank, Amplification its
+//               own value), applied to the damage shield of a Singing-skill song. The bonuses add:
+//               a shield of 6 read 7 at +2 and 11 at +9. Nothing else is scaled, because no other
+//               effect has been measured with it.
 // Returns { pool, unresolvable } — a spell with an unknown formula is left out and named.
 // Each spell's `owned` is true or false against the spellbook, or null without one.
-export function buildPool(ds, trio, level, { fightTicks = null, owned = null } = {}) {
+export function buildPool(ds, trio, level, { fightTicks = null, owned = null, bard = {} } = {}) {
+  const { songLevels = 0, singing = 0 } = bard;
   const idx = trio.map((c) => {
     const i = CLASSES.indexOf(c);
     if (i < 0) throw new Error(`unknown class ${c}`);
@@ -54,20 +68,23 @@ export function buildPool(ds, trio, level, { fightTicks = null, owned = null } =
     const eff = Math.min(...levels);
     if (!(eff >= 1 && eff <= LEVEL_CAP)) continue;
 
-    const ticks = durationTicks(s.durFormula, s.durCap, level);
+    const song = isSong(s);
+    const bonus = song ? songLevels : 0;
+    const at = level + bonus; // the level its numbers are read at
+    const ticks = durationTicks(s.durFormula, s.durCap, at);
     const elapsed = fightTicks ? Math.min(finiteTicks(ticks), fightTicks) : finiteTicks(ticks);
     const floor = eff > level ? eff : null;
     let dticks = ticks;
     let delapsed = elapsed;
     if (floor) {
-      dticks = durationTicks(s.durFormula, s.durCap, floor);
+      dticks = durationTicks(s.durFormula, s.durCap, floor + bonus);
       delapsed = fightTicks ? Math.min(finiteTicks(dticks), fightTicks) : finiteTicks(dticks);
     }
 
     let slots;
     try {
-      slots = parseSlots(s.slots, level, ds, {
-        ticks: elapsed, context: s.name, displayLevel: floor, displayTicks: delapsed,
+      slots = parseSlots(s.slots, at, ds, {
+        ticks: elapsed, context: s.name, displayLevel: floor ? floor + bonus : null, displayTicks: delapsed,
       });
     } catch (e) {
       if (!(e instanceof UnknownFormula)) throw e;
@@ -104,12 +121,23 @@ export function buildPool(ds, trio, level, { fightTicks = null, owned = null } =
       recourseId: s.link,
       recourse: [],
       owned: owned ? owned.has(s.name) : null,
+      song,
+      songLevels: bonus,
+      singing: 0,
     };
+    if (song && s.skill === SINGING && singing > 0) {
+      row.singing = singing;
+      for (const x of slots) {
+        if (x.spa !== DAMAGE_SHIELD) continue;
+        x.value = Math.floor((x.value * (10 + singing)) / 10);
+        x.display = Math.floor((x.display * (10 + singing)) / 10);
+      }
+    }
 
     const r = s.link > 0 ? ds.recourses[s.link] : null;
     if (r) {
       row.recourseName = r.name;
-      row.recourse = parseSlots(r.slots, level, ds, { displayLevel: floor });
+      row.recourse = parseSlots(r.slots, at, ds, { displayLevel: floor ? floor + bonus : null });
       row.recourseBeneficial = r.beneficial;
       row.recourseTarget = r.target;
     }

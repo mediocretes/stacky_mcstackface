@@ -36,6 +36,38 @@ two needed files are in, and again after each file you add; open it any time to 
 **Options:** what you are fighting (some spells only work on undead, summoned or animals), and a
 fight length, which cuts damage-over-time off when the mob would be dead.
 
+## Bards and the Symphonic Aura
+
+With a bard in the trio, *Your trio* asks for three AA ranks from your AA window:
+
+- **Jam Fest** makes songs read 1, 3, 5, 6 or 7 levels higher, by rank.
+- **Singing Mastery** adds 20% a rank to the singing bonus. It is applied to the damage shield of a
+  Singing-skill song, the one effect it has been measured on; other effects are shown unscaled.
+- **Symphonic Aura** is how many songs the aura sings for a set that runs it.
+
+On the Sets tab, tick **runs the Symphonic Aura** on the set that holds your songs. Then:
+
+- **Its last gems are aura gems**, one per rank. A rule there chooses only songs the aura can sing:
+  *best haste* means the best haste *song*, not a spell. Chips beside an imported song answer the
+  same way.
+- **The aura's walk is shown gem by gem.** It sings the first eligible songs counting up from the
+  last gem. A spell or single-target song in an aura gem is passed over, and the aura reaches one gem
+  further up. An eligible song it does not reach is marked dead: while the aura is on, it cannot be
+  sung by hand.
+- **Conflicts are named.** Two songs with the same effect in the same slot cannot both hold — the
+  game keeps the larger and refuses the other whole. Hastes never add, whatever their slots: only
+  the larger counts.
+- **Amplification** in the aura adds its own bonus to Singing songs' damage shields, and the set
+  shows the shields that land.
+- **Fill the aura's gems with songs** starts from haste, song damage, damage shield, slow,
+  Amplification and mana, keeping the ones a song can fill.
+
+What this rests on: the aura sings every song together, every 6 seconds, so a song's own duration
+does not matter and more ranks do not thin the others. That, the conflict rules and the bonuses
+were all read from a player's combat log. What it does not know yet: whether a song's haste adds to
+a spell's, which of two slows on a mob counts, and which effects besides the damage shield take the
+singing bonus.
+
 ## Your files and your data
 
 - **Nothing is uploaded.** The page has no server and no analytics; the files are read in your
@@ -89,7 +121,7 @@ private desktop tool, and before a release it is also checked against that tool 
 
 | Path | What it is |
 |---|---|
-| `src/engine/` | Plain ES modules with no DOM; they run in the browser and in Node. `layout.js` (the file's columns, and the check that refuses an unknown layout), `formulas.js`, `parse.js`, `pool.js`, `roles.js`, `wants.js`, `sets.js`, `analysis.js`, `imports.js` (the spellbook export and saved sets), `spec.js` (the role and buff vocabulary, as data). |
+| `src/engine/` | Plain ES modules with no DOM; they run in the browser and in Node. `layout.js` (the file's columns, and the check that refuses an unknown layout), `formulas.js`, `parse.js`, `pool.js`, `roles.js`, `wants.js`, `sets.js`, `analysis.js`, `imports.js` (the spellbook export and saved sets), `aura.js` (the Symphonic Aura and the bard's song AAs), `spec.js` (the role and buff vocabulary, generated from the desktop tool; never edit by hand), `spec-extra.js` (vocabulary only this page has), `vocab.js` (the two merged). |
 | `src/app.js`, `src/sets-view.js`, `src/ui.js`, `src/format.js` | The page: state, rendering and events. |
 | `src/worker.js` | Parses the files off the page's thread. |
 | `src/store.js` | IndexedDB and localStorage. |
@@ -100,9 +132,8 @@ them, so the page can be tested in a headless browser.
 
 ## Roadmap
 
-- Warn when two buffs in a set use the same effect slot.
-- The bard's Symphonic Aura: which songs it can pulse.
-- Apply the song AAs.
+- Warn when two buffs in a set use the same effect slot (songs already are).
+- Read the bard AA ranks from the combat log instead of asking for them.
 
 ## Licence
 

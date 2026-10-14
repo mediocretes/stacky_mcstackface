@@ -16,6 +16,7 @@ const DEFAULTS = {
   trio: ['BRD', 'SHD', 'SHM'], level: 30, hunting: 'generic', fightTicks: null,
   tab: 'best', metrics: {}, show: 'castable', query: '', sort: 'level',
   sets: [], activeSet: 0, compareLevel: null, lastImport: null,
+  bard: { aura: 0, jamFest: 0, singingMastery: 0 },
 };
 
 const state = {
@@ -272,6 +273,19 @@ function incomingBanner() {
     <button class="button" data-act="use-shared">Use them</button> <button class="quiet" data-act="ignore-shared">Ignore</button></div>`;
 }
 
+// The bard's AAs that change songs. The game does not write them to any file this page reads,
+// so they are typed in; each is one number from the AA window.
+function bardInputs(st) {
+  const b = st.bard ?? {};
+  const field = (key, label, max) => `<label>${label} <input type="number" min="0" max="${max}" value="${esc(b[key] ?? 0)}" data-bard="${key}"></label>`;
+  return `<details class="bard"${b.aura || b.jamFest || b.singingMastery ? '' : ' open'}><summary>Bard AAs</summary>
+    <div class="row">${field('aura', 'Symphonic Aura', 12)}${field('jamFest', 'Jam Fest', 5)}${field('singingMastery', 'Singing Mastery', 4)}</div>
+    <p class="small">Ranks, from your AA window. Jam Fest makes songs read 1, 3, 5, 6 or 7 levels higher. Singing Mastery's
+    bonus is applied to Singing songs' damage shields, the one effect it has been measured on. Symphonic Aura's rank is how many
+    songs a set that runs it gets sung for it (on the Sets tab).</p>
+  </details>`;
+}
+
 function setup() {
   const st = state.settings;
   const classSelect = (i) => `<select data-trio="${i}" aria-label="class ${i + 1}">${CLASSES.map((c) => option(c, `${c} — ${CLASS_NAMES[c]}`, st.trio[i])).join('')}</select>`;
@@ -288,6 +302,7 @@ function setup() {
       <p class="small">"Fighting" admits spells that only work on undead, summoned or animals. Fight length
       cuts damage-over-time off when the mob dies (a tick is 6 seconds); leave it empty to count the full duration.</p>
     </details>
+    ${st.trio.includes('BRD') ? bardInputs(st) : ''}
     ${state.incoming ? incomingBanner() : ''}
     ${state.error ? `<p class="error">${esc(state.error)}</p>` : ''}
   </section>`;
@@ -463,6 +478,11 @@ document.addEventListener('change', (e) => {
     const n = Math.min(LEVEL_CAP, Math.max(1, parseInt(el.value, 10) || 1));
     set({ level: n });
   } else if (el.matches('[data-hunting]')) set({ hunting: el.value });
+  else if (el.matches('[data-bard]')) {
+    const max = { aura: 12, jamFest: 5, singingMastery: 4 }[el.dataset.bard];
+    const n = Math.min(max, Math.max(0, parseInt(el.value, 10) || 0));
+    set({ bard: { ...state.settings.bard, [el.dataset.bard]: n } });
+  }
   else if (el.matches('[data-fight]')) {
     const n = parseInt(el.value, 10);
     set({ fightTicks: n > 0 ? n : null });
