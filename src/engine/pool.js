@@ -35,8 +35,10 @@ export function parseSlots(raw, level, ds, { ticks = 0, strict = true, context, 
 }
 
 // trio: three class codes. level: the trio's level. fightTicks: cut DoTs off at this length.
+// owned: the spell names in your spellbook, or null when none was given.
 // Returns { pool, unresolvable } — a spell with an unknown formula is left out and named.
-export function buildPool(ds, trio, level, { fightTicks = null } = {}) {
+// Each spell's `owned` is true or false against the spellbook, or null without one.
+export function buildPool(ds, trio, level, { fightTicks = null, owned = null } = {}) {
   const idx = trio.map((c) => {
     const i = CLASSES.indexOf(c);
     if (i < 0) throw new Error(`unknown class ${c}`);
@@ -101,6 +103,7 @@ export function buildPool(ds, trio, level, { fightTicks = null } = {}) {
       slots,
       recourseId: s.link,
       recourse: [],
+      owned: owned ? owned.has(s.name) : null,
     };
 
     const r = s.link > 0 ? ds.recourses[s.link] : null;

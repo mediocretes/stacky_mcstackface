@@ -8,23 +8,27 @@ import { WANT_KEYS, want, candidates, isMagnitude, displayCoverage } from './wan
 const byLevel = (a, b) => a[0].level - b[0].level || b[1] - a[1];
 
 // ranked: [[spell, value]] best first, over every spell in the pool (above-level included).
+// With a spellbook, the pick is the best spell you have scribed, and a better one you could
+// scribe now is named beside it.
 function pick(ranked, level) {
   const castable = ranked.filter(([s]) => s.level <= level);
   const upcoming = ranked.filter(([s]) => s.level > level);
-  const choice = castable[0] ?? null;
+  const choice = castable.find(([s]) => s.owned !== false) ?? castable[0] ?? null;
+  const unscribed = choice ? castable.find(([s, v]) => s.owned === false && v > choice[1]) ?? null : null;
   const better = choice ? upcoming.filter(([, v]) => v > choice[1]) : upcoming;
   return {
     castable,
     upcoming,
     choice,
+    unscribed,
     next: [...better].sort(byLevel)[0] ?? null, // the soonest spell that beats today's pick
     best: better[0] ?? null, // the strongest one in the level range
   };
 }
 
-export function analyze(ds, settings) {
+export function analyze(ds, settings, owned = null) {
   const { trio, level, hunting = 'generic', fightTicks = null, metrics = {} } = settings;
-  const { pool, unresolvable } = buildPool(ds, trio, level, { fightTicks });
+  const { pool, unresolvable } = buildPool(ds, trio, level, { fightTicks, owned });
   const ctx = { hunting, burstThreshold: calibrateBurst(pool, hunting), fightTicks };
   const members = classify(pool, ctx);
 
@@ -48,7 +52,8 @@ export function analyze(ds, settings) {
       upcoming: cands.filter(([s]) => s.level > level),
     };
     if (!magnitude) {
-      p.choice = p.castable[0] ?? null;
+      p.choice = p.castable.find(([s]) => s.owned !== false) ?? p.castable[0] ?? null;
+      p.unscribed = null;
       p.next = [...p.upcoming].sort(byLevel)[0] ?? null;
     }
     return { key, label: w.label, magnitude, count: cands.length, ...p, display: (s) => displayCoverage(s, key) };

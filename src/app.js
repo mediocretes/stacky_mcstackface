@@ -4,6 +4,8 @@
 import { analyze } from './engine/analysis.js';
 import { CLASSES, CLASS_NAMES, LEVEL_CAP, FIELD_COUNT } from './engine/layout.js';
 import { DATASET_VERSION, parseClientFiles } from './engine/parse.js';
+import { parseSpellbook, parseLoadouts, importKind } from './engine/imports.js';
+import { mergeImported } from './engine/sets.js';
 import { bundle, chainCaution, formatMetric, METRICS, HUNTS } from './engine/roles.js';
 import { option, spellName, effects } from './ui.js';
 import { setsView, onSetsChange, onSetsClick, readShareLink } from './sets-view.js';
@@ -27,17 +29,26 @@ const state = {
   incoming: readShareLink(location.hash), // sets from a shared link, until used or ignored
   pending: { spells: null, dbstr: null }, // files chosen so far; both are needed
   reloading: false, // the file panel is open over an already-loaded dataset
+  book: null, // { file, size, names, loadedAt } from a spellbook export, or null
+  note: null, // what the last import did
 };
 
 const root = document.getElementById('app');
 
 // ---- state changes ------------------------------------------------------------------------
 
+// The spellbook's names as a Set, built once per spellbook.
+function owned() {
+  if (!state.book) return null;
+  if (state.book.set?.size !== state.book.names.length) state.book.set = new Set(state.book.names);
+  return state.book.set;
+}
+
 function recompute() {
   state.result = null;
   if (!state.ds) return;
   try {
-    state.result = analyze(state.ds, state.settings);
+    state.result = analyze(state.ds, state.settings, owned());
   } catch (e) {
     state.error = `Could not work out the spells for this trio: ${e.message}`;
   }
@@ -117,6 +128,49 @@ async function addFiles(list) {
   render();
 }
 
+// The two optional files, from either picker or a drop: a spellbook export, which marks what
+// you have scribed, and the game's saved sets, which become sets here.
+async function importFiles(list) {
+  state.error = null;
+  state.note = null;
+  for (const file of [...list]) {
+    const head = await file.slice(0, 4096).text();
+    const kind = importKind(file.name, head);
+    try {
+      if (kind === 'spellbook') {
+        const book = parseSpellbook(await file.text());
+        state.book = { file: file.name, size: book.size, names: [...book.keys()], loadedAt: Date.now() };
+        await store.saveBook({ file: state.book.file, size: state.book.size, names: state.book.names, loadedAt: state.book.loadedAt });
+        const mine = state.ds ? recomputeCount() : null;
+        state.note = `Spellbook loaded: ${book.size} spells${mine !== null ? `, ${mine} of them ones this trio can cast` : ''}.`;
+      } else if (kind === 'loadouts') {
+        const loadouts = parseLoadouts(await file.text());
+        if (!loadouts.length) throw new Error(`${file.name} has no saved spell sets that are in use.`);
+        const { sets, added, replaced } = mergeImported(state.settings.sets ?? [], loadouts);
+        const first = sets.findIndex((x) => x.name === loadouts[0].name);
+        set({ sets, activeSet: first, tab: 'sets' }, { compute: false });
+        state.note = `Imported ${loadouts.map((l) => l.name).join(', ')} from ${file.name}` +
+          (replaced.length ? ` (replacing your ${replaced.join(', ')})` : '') +
+          '. Each gem holds exactly the spell the game has there; the hints beside a gem show which rules it fills.';
+      } else {
+        throw new Error(`${file.name} is neither a spellbook export (…-Spellbook.txt) nor a saved-sets file (…_LO1.ini).`);
+      }
+    } catch (e) {
+      state.error = e.message;
+    }
+  }
+  recompute();
+  render();
+}
+
+function recomputeCount() {
+  const set = owned();
+  return state.ds.spells.filter((s) => set.has(s.name) && state.settings.trio.some((c) => {
+    const l = s.levels[CLASSES.indexOf(c)];
+    return l >= 1 && l <= LEVEL_CAP;
+  })).length;
+}
+
 // ---- rendering ----------------------------------------------------------------------------
 
 function fileStatus() {
@@ -165,6 +219,24 @@ function incomingBanner() {
     <button class="button" data-act="use-shared">Use them</button> <button class="quiet" data-act="ignore-shared">Ignore</button></div>`;
 }
 
+function extras() {
+  const b = state.book;
+  const book = b
+    ? `<p>Spellbook: <b>${esc(b.file)}</b>, ${b.size} spells. Spells you have not scribed are marked, and picks prefer
+       the ones you have. <label class="quiet">Load a newer one<input type="file" accept=".txt" data-import hidden></label>
+       <button class="quiet" data-act="forget-book">Forget it</button></p>`
+    : `<p><label class="button">Add your spellbook<input type="file" accept=".txt" data-import hidden></label>
+       <span class="small">In game, type <code>/outputfile spellbook</code>; it writes
+       <code>&lt;name&gt;_&lt;server&gt;-&lt;class&gt;-Spellbook.txt</code> to your EverQuest Legends folder. Picks then
+       prefer spells you have, and mark the ones you have not scribed.</span></p>`;
+  return `<details class="extras"${b ? '' : ' open'}><summary>Your spellbook and saved sets (optional)</summary>
+    ${book}
+    <p><label class="button">Import your saved sets<input type="file" accept=".ini" data-import hidden></label>
+    <span class="small">From <code>&lt;name&gt;_&lt;server&gt;_LO1.ini</code> (LO2, LO3… for your other class sets) in the same
+    folder. Each saved set becomes a set on the Sets tab.</span></p>
+  </details>`;
+}
+
 function setup() {
   const st = state.settings;
   const classSelect = (i) => `<select data-trio="${i}" aria-label="class ${i + 1}">${CLASSES.map((c) => option(c, `${c} — ${CLASS_NAMES[c]}`, st.trio[i])).join('')}</select>`;
@@ -184,9 +256,11 @@ function setup() {
         cuts damage-over-time off when the mob dies (a tick is 6 seconds); leave it empty to count the full duration.</p>
       </details>
     </div>
+    ${state.ds && !state.reloading ? extras() : ''}
     ${state.incoming ? incomingBanner() : ''}
     ${state.busy ? `<p class="busy">${esc(state.busy)}</p>` : ''}
     ${state.error ? `<p class="error">${esc(state.error)}</p>` : ''}
+    ${state.note ? `<p class="note">${esc(state.note)}</p>` : ''}
   </section>`;
 }
 
@@ -209,9 +283,12 @@ function roleCard(r) {
        <div class="classes">${esc(classes(r.choice[0]))}</div>${effects(r.choice[0])}
        ${chainCaution(r.choice[0]) ? `<div class="caution">⏳ ${esc(chainCaution(r.choice[0]))}</div>` : ''}</div>`
     : '<div class="pick none">Nothing castable yet.</div>';
-  const next = r.next
+  const next = (r.unscribed
+    ? `<div class="next scribe">Better, and castable now: ${spellName(r.unscribed[0], state.result.level)}
+       <span class="val">${esc(fmtV(r.unscribed[1]))}</span> <div class="sub">${effects(r.unscribed[0])}</div></div>`
+    : '') + (r.next
     ? `<div class="next">Next: ${spellName(r.next[0], state.result.level)} <div class="sub">${effects(r.next[0])}</div></div>`
-    : '';
+    : '');
   return `<article class="card">
     <header><h3>${esc(r.label)}</h3>${metricPicker}</header>
     ${choice}${next}
@@ -256,7 +333,7 @@ function buffsView() {
       const all = [...w.castable, ...w.upcoming];
       return `<tr class="${open ? 'open' : ''}" data-toggle="want:${w.key}">
         <td>${esc(w.label)} <span class="count">${w.count}</span></td>
-        <td>${c ? spellName(c[0], lvl) : '<span class="none">not yet</span>'}</td>
+        <td>${c ? spellName(c[0], lvl) : '<span class="none">not yet</span>'}${w.unscribed ? `<div class="sub">better, not scribed: ${spellName(w.unscribed[0], lvl)} ${esc(w.unscribed[1])}</div>` : ''}</td>
         <td class="val">${c && w.magnitude ? esc(c[1]) : ''}</td>
         <td>${w.next ? `${spellName(w.next[0], lvl)}${w.magnitude ? ` <span class="val">${esc(size(w, w.next[0]))}</span>` : ''}` : ''}</td></tr>
         ${open ? `<tr class="detail"><td colspan="4"><ol class="ranked">${all.map(([s, v]) => `<li class="${s.level > lvl ? 'later' : ''}">
@@ -283,7 +360,8 @@ function spellRows() {
   const { pool, level } = state.result;
   const st = state.settings;
   const q = st.query.trim().toLowerCase();
-  let list = pool.filter((s) => (st.show === 'all' || (st.show === 'castable' ? s.level <= level : s.level > level)));
+  let list = pool.filter((s) => (st.show === 'all' || (st.show === 'castable' ? s.level <= level : st.show === 'later' ? s.level > level
+    : st.show === 'unscribed' ? s.level <= level && s.owned === false : s.owned === true)));
   if (q) list = list.filter((s) => s.name.toLowerCase().includes(q) || bundle(s, { friendly: true }).join(' ').toLowerCase().includes(q));
   list.sort(st.sort === 'name' ? (a, b) => a.name.localeCompare(b.name) : (a, b) => a.level - b.level || a.name.localeCompare(b.name));
   if (list.length === 0) return '<tr><td colspan="6" class="none">No spells match.</td></tr>';
@@ -309,7 +387,7 @@ function spellsView() {
   const st = state.settings;
   return `<div class="controls">
       <input type="search" placeholder="Search names and effects" value="${esc(st.query)}" data-query aria-label="search">
-      <select data-show>${option('castable', 'castable now', st.show)}${option('later', 'coming later', st.show)}${option('all', 'all to level 50', st.show)}</select>
+      <select data-show>${option('castable', 'castable now', st.show)}${option('later', 'coming later', st.show)}${option('all', 'all to level 50', st.show)}${state.book ? option('unscribed', 'castable, not scribed', st.show) + option('scribed', 'in my spellbook', st.show) : ''}</select>
       <select data-sort>${option('level', 'by level', st.sort)}${option('name', 'by name', st.sort)}</select>
     </div>
     <div class="scroll"><table class="spells"><thead><tr><th>L</th><th>Spell</th><th>Mana</th><th>Cast</th><th>Lasts</th><th>Effects</th></tr></thead>
@@ -348,6 +426,7 @@ document.addEventListener('change', (e) => {
   const el = e.target;
   if (state.ds && onSetsChange(el, state, set)) return;
   if (el.matches('[data-file-slot]')) addFiles(el.files);
+  else if (el.matches('[data-import]')) importFiles(el.files);
   else if (el.matches('[data-trio]')) {
     const trio = [...state.settings.trio];
     trio[Number(el.dataset.trio)] = el.value;
@@ -373,7 +452,7 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('click', (e) => {
-  const el = e.target.closest('[data-act], [data-tab], [data-toggle], [data-spell], [data-set-tab], [data-gem-up], [data-gem-down]');
+  const el = e.target.closest('[data-act], [data-tab], [data-toggle], [data-spell], [data-set-tab], [data-gem-up], [data-gem-down], [data-gem-rule]');
   if (!el || e.target.closest('select, input, a')) return;
   if (el.dataset.act === 'use-shared' || el.dataset.act === 'ignore-shared') {
     const p = state.incoming;
@@ -391,6 +470,14 @@ document.addEventListener('click', (e) => {
     state.reloading = el.dataset.act === 'reload';
     state.pending = { spells: null, dbstr: null };
     state.error = null;
+    render();
+    return;
+  }
+  if (el.dataset.act === 'forget-book') {
+    store.forgetBook();
+    state.book = null;
+    state.note = null;
+    recompute();
     render();
     return;
   }
@@ -438,6 +525,7 @@ async function devLoad() {
 }
 
 render();
+store.loadBook().then((book) => { if (book?.names) { state.book = book; recompute(); render(); } });
 devLoad().then((done) => done || store.loadDataset().then((ds) => {
   if (ds && ds.version === DATASET_VERSION) {
     state.ds = ds;

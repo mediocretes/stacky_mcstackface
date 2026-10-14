@@ -8,8 +8,8 @@
 // order each take the best spell not already in the set.
 
 import { buildPool } from './pool.js';
-import { classify, calibrateBurst, rank, role } from './roles.js';
-import { candidates, want } from './wants.js';
+import { classify, calibrateBurst, rank, role, ROLE_KEYS } from './roles.js';
+import { candidates, want, coveringSlots, WANT_KEYS, isMagnitude as isSize } from './wants.js';
 import { LEVEL_CAP } from './layout.js';
 
 export const GEMS = 14;
@@ -27,9 +27,10 @@ export function ruleLabel(rule) {
   return 'this spell';
 }
 
-// Everything a set needs at one level, built once and shared by every set.
-export function context(ds, settings, level) {
-  const { pool } = buildPool(ds, settings.trio, level, { fightTicks: settings.fightTicks ?? null });
+// Everything a set needs at one level, built once and shared by every set. owned: the
+// spellbook's names, or null.
+export function context(ds, settings, level, owned = null) {
+  const { pool } = buildPool(ds, settings.trio, level, { fightTicks: settings.fightTicks ?? null, owned });
   const hunting = settings.hunting ?? 'generic';
   const ctx = { hunting, burstThreshold: calibrateBurst(pool, hunting), fightTicks: settings.fightTicks ?? null };
   return { level, pool, ctx, members: classify(pool, ctx), byId: new Map(pool.map((s) => [s.id, s])) };
@@ -46,14 +47,15 @@ function ordered(rule, c) {
   return [];
 }
 
-// gems → [{ rule, spell, value, state }] where state is
-//   'ok'      a castable spell fills it
+// gems → [{ rule, spell, value, state, unscribed }] where state is
+//   'ok'      a castable spell fills it (a scribed one first, when a spellbook was given;
+//             `unscribed` is then a better castable spell that is not in the book)
 //   'later'   only a spell above your level would (spell is that one)
 //   'none'    nothing in this trio fits
 //   'empty'   no rule
 export function resolveSet(gems, c) {
   const used = new Set();
-  const out = gems.map((rule) => ({ rule, spell: null, value: null, state: rule ? 'none' : 'empty' }));
+  const out = gems.map((rule) => ({ rule, spell: null, value: null, state: rule ? 'none' : 'empty', unscribed: null }));
 
   out.forEach((g) => {
     if (g.rule?.kind !== 'spell') return;
@@ -67,11 +69,15 @@ export function resolveSet(gems, c) {
   out.forEach((g) => {
     if (!g.rule || g.rule.kind === 'spell') return;
     const list = ordered(g.rule, c).filter(([s]) => !used.has(s.id));
-    const hit = list.find(([s]) => s.level <= c.level);
+    const castable = list.filter(([s]) => s.level <= c.level);
+    const hit = castable.find(([s]) => s.owned !== false) ?? castable[0];
     if (hit) {
       [g.spell, g.value] = hit;
       g.state = 'ok';
       used.add(hit[0].id);
+      const better = castable.find(([s, v]) => s.owned === false && v !== null && hit[1] !== null && v > hit[1]);
+      if (better && g.rule.kind === 'role') g.unscribed = better[0];
+      else if (better && g.rule.kind === 'want' && isSize(g.rule.key)) g.unscribed = better[0];
     } else if (list.length) {
       const soonest = [...list].sort((a, b) => a[0].level - b[0].level)[0];
       [g.spell, g.value] = soonest;
@@ -79,6 +85,29 @@ export function resolveSet(gems, c) {
     }
   });
   return out;
+}
+
+// The rules a spell can fill — the roles it belongs to, then the buffs it gives — each with
+// what that rule would pick at this level. Used to explain a gem that holds one exact spell.
+export function rulesFor(spell, c) {
+  const rules = [
+    ...ROLE_KEYS.filter((k) => (c.members[k] ?? []).some((s) => s.id === spell.id)).map((key) => ({ kind: 'role', key })),
+    ...WANT_KEYS.filter((k) => coveringSlots(spell, k)).map((key) => ({ kind: 'want', key })),
+  ];
+  return rules.map((rule) => ({ rule, pick: resolveSet([rule], c)[0] }));
+}
+
+// Saved sets from the game become sets of exact spells, merged into yours by name.
+export function mergeImported(sets, loadouts) {
+  const out = structuredClone(sets);
+  const added = [];
+  const replaced = [];
+  for (const l of loadouts) {
+    const gems = l.slots.map((id) => (id ? { kind: 'spell', id } : null));
+    const i = out.findIndex((s) => s.name === l.name);
+    if (i >= 0) { out[i] = { name: l.name, gems }; replaced.push(l.name); } else { out.push({ name: l.name, gems }); added.push(l.name); }
+  }
+  return { sets: out, added, replaced };
 }
 
 // For each gem, the first level above `from` at which it resolves to a different castable

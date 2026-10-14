@@ -11,7 +11,8 @@ import { buildPool } from '../src/engine/pool.js';
 import { classify, calibrateBurst, rank, bundle, formatMetric } from '../src/engine/roles.js';
 import { candidates, coverage } from '../src/engine/wants.js';
 import { analyze } from '../src/engine/analysis.js';
-import { context, resolveSet, nextChanges } from '../src/engine/sets.js';
+import { context, resolveSet, nextChanges, rulesFor, mergeImported } from '../src/engine/sets.js';
+import { parseSpellbook, parseLoadouts, importKind } from '../src/engine/imports.js';
 
 function row({
   id, name, levels = {}, slots = '', cast = 2500, recovery = 1500, reuse = 0, mana = 10,
@@ -143,4 +144,55 @@ test('share links round-trip and refuse junk', async () => {
   assert.deepEqual(back.sets[0].gems.slice(0, 3), [{ kind: 'role', key: 'slow' }, { kind: 'spell', id: 3 }, null]);
   assert.equal(back.sets[0].gems.length, 14);
   assert.equal(readShareLink('#share=not-json'), null);
+});
+
+test('imports: spellbook export and saved sets', () => {
+  const book = parseSpellbook('1\tTest Strength\r\n10\tTest Slow\r\n\r\n');
+  assert.deepEqual([...book.entries()], [['Test Strength', 1], ['Test Slow', 10]]);
+  assert.throws(() => parseSpellbook('nothing here'), /no spellbook lines/);
+
+  const ini = ['[HotButtons]', 'Page1Button1=x', '[SpellLoadouts]',
+    'SpellLoadout1.inuse=1', 'SpellLoadout1.name=Fight', 'SpellLoadout1.slot1=2', 'SpellLoadout1.slot2=-1', 'SpellLoadout1.slot3=999',
+    'SpellLoadout2.inuse=0', 'SpellLoadout2.name=Old', 'SpellLoadout2.slot1=4',
+    'SpellLoadout3.inuse=1', 'SpellLoadout3.name=',
+    '[Other]', 'SpellLoadout4.name=Not a loadout'].join('\r\n');
+  const sets = parseLoadouts(ini);
+  assert.equal(sets.length, 1, 'unused and unnamed sets are left out');
+  assert.equal(sets[0].name, 'Fight');
+  assert.deepEqual(sets[0].slots.slice(0, 4), [2, null, 999, null]);
+  assert.equal(sets[0].slots.length, 14);
+  assert.throws(() => parseLoadouts('[Defaults]\nx=1'), /no saved spell sets/);
+
+  assert.equal(importKind('Someone_server-BRD-Spellbook.txt', ''), 'spellbook');
+  assert.equal(importKind('Someone_server_LO3.ini', ''), 'loadouts');
+  assert.equal(importKind('renamed.txt', '[SpellLoadouts]\nSpellLoadout1.name=A'), 'loadouts');
+  assert.equal(importKind('renamed.txt', '12\tSome Spell'), 'spellbook');
+  assert.equal(importKind('notes.txt', 'hello'), null);
+
+  const merged = mergeImported([{ name: 'Fight', gems: [] }, { name: 'Mine', gems: [] }], sets);
+  assert.deepEqual(merged.replaced, ['Fight']);
+  assert.deepEqual(merged.sets.map((x) => x.name), ['Fight', 'Mine']);
+  assert.deepEqual(merged.sets[0].gems.slice(0, 3), [{ kind: 'spell', id: 2 }, null, { kind: 'spell', id: 999 }]);
+});
+
+test('spellbook: picks prefer what you have scribed and name the better one you have not', () => {
+  const ds2 = parseClientFiles(`${SPELLS}\n${row({ id: 10, name: 'Mid Slow', levels: { SHM: 15 }, slots: '1|11|75|0|101|45', durFormula: 6, durCap: 35 })}`, DBSTR);
+  const owned = new Set(['Test Slow', 'Test Strength', 'Test Bolt']);
+  const r = analyze(ds2, { trio: TRIO, level: 20 }, owned);
+  const slow = r.roles.find((x) => x.key === 'slow');
+  assert.equal(slow.choice[0].name, 'Test Slow');
+  assert.equal(slow.unscribed[0].name, 'Mid Slow');
+  assert.equal(slow.choice[0].owned, true);
+  assert.equal(slow.unscribed[0].owned, false);
+
+  const withoutBook = analyze(ds2, { trio: TRIO, level: 20 });
+  assert.equal(withoutBook.roles.find((x) => x.key === 'slow').choice[0].name, 'Mid Slow');
+
+  const c = context(ds2, { trio: TRIO }, 20, owned);
+  const [g] = resolveSet([{ kind: 'role', key: 'slow' }], c);
+  assert.deepEqual([g.spell.name, g.unscribed.name], ['Test Slow', 'Mid Slow']);
+
+  // An imported gem holding Test Slow: it fills the slow role, whose pick (with this book) is itself.
+  const hints = rulesFor(c.byId.get(2), c);
+  assert.deepEqual(hints.map((h) => [h.rule.kind, h.rule.key, h.pick.spell.name]), [['role', 'slow', 'Test Slow']]);
 });

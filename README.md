@@ -16,12 +16,18 @@ install, and it works everything out from those.
    type the name into the file window's *File name* box rather than scrolling for it. You only do
    this once, and again after a game patch.
 3. Choose your three classes and your trio's level — the lowest of the three.
+4. Optionally, add two more files from the same folder:
+   - **your spellbook export**, `<name>_<server>-<class>-Spellbook.txt`, written in game by
+     `/outputfile spellbook`. Picks then prefer spells you have scribed, mark the ones you have
+     not, and name a better one you could scribe now.
+   - **your saved spell sets**, `<name>_<server>_LO1.ini` (LO2, LO3… for your other class sets).
+     Each saved set becomes a set on the Sets tab.
 
 | Tab | What it shows |
 |---|---|
 | **Best picks** | For each ranked job, the best spell you can cast now, the next one that beats it, and every effect each carries. Most jobs can be ranked more than one way (damage per second, per mana, per cast…). |
 | **Buffs** | For each thing you might want on you — a stat, a resist, see invisible, run speed — the biggest you can cast now and the next bigger one. |
-| **Sets** | Rows of 14 gems. Each gem holds a rule (*best slow*, *strength buff*) or one spell you always want. Raise your level and the changed gems are marked, with what they replaced; every gem also shows when it will change next. Copy a set as text, or copy a link that carries your sets to someone else. |
+| **Sets** | Rows of 14 gems. Each gem holds a rule (*best slow*, *strength buff*) or one spell you always want. Raise your level and the changed gems are marked, with what they replaced; every gem also shows when it will change next. Import the sets you saved in game: each gem then holds that exact spell, with the rules it fills beside it and what each rule would pick, one click to switch. Copy a set as text, or copy a link that carries your sets to someone else. |
 | **All spells** | Everything your trio can cast, now or later, searchable by name and effect, with the game's own description. |
 
 **Options:** what you are fighting (some spells only work on undead, summoned or animals), and a
@@ -32,7 +38,9 @@ fight length, which cuts damage-over-time off when the mob would be dead.
 - **Nothing is uploaded.** The page has no server and no analytics; the files are read in your
   browser.
 - **What it keeps, in this browser only:** the part of your spell file it needs (about 700 KB, in
-  IndexedDB), and your trio, level and sets (in localStorage). *Forget my files* removes the first.
+  IndexedDB), the spell names from your spellbook export if you gave one (IndexedDB), and your trio,
+  level and sets, imported ones included (localStorage). *Forget my files* and *Forget it* remove the
+  first two.
 - **A shared link** holds your trio, level and set rules — spell ids, not spell text.
 - **No game data ships with the page.** Every spell name and number you see comes from your files.
 
@@ -78,7 +86,7 @@ private desktop tool, and before a release it is also checked against that tool 
 
 | Path | What it is |
 |---|---|
-| `src/engine/` | Plain ES modules with no DOM; they run in the browser and in Node. `layout.js` (the file's columns, and the check that refuses an unknown layout), `formulas.js`, `parse.js`, `pool.js`, `roles.js`, `wants.js`, `sets.js`, `analysis.js`, `spec.js` (the role and buff vocabulary, as data). |
+| `src/engine/` | Plain ES modules with no DOM; they run in the browser and in Node. `layout.js` (the file's columns, and the check that refuses an unknown layout), `formulas.js`, `parse.js`, `pool.js`, `roles.js`, `wants.js`, `sets.js`, `analysis.js`, `imports.js` (the spellbook export and saved sets), `spec.js` (the role and buff vocabulary, as data). |
 | `src/app.js`, `src/sets-view.js`, `src/ui.js`, `src/format.js` | The page: state, rendering and events. |
 | `src/worker.js` | Parses the files off the page's thread. |
 | `src/store.js` | IndexedDB and localStorage. |
@@ -89,8 +97,6 @@ them, so the page can be tested in a headless browser.
 
 ## Roadmap
 
-- Read your spellbook export, so spells you have not scribed are marked.
-- Read your saved spell sets from the game's loadout files.
 - Warn when two buffs in a set use the same effect slot.
 - The bard's Symphonic Aura: which songs it can pulse.
 - Apply the song AAs.

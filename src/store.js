@@ -1,5 +1,6 @@
 // What the page remembers, all of it in this browser only.
-//   IndexedDB     the dataset parsed from your client files (a few hundred KB)
+//   IndexedDB     the dataset parsed from your client files (a few hundred KB), and the
+//                 spell names from your spellbook export
 //   localStorage  your trio, level and view choices
 // Either can be unavailable (private windows, blocked site data); the page then works for
 // the visit and forgets afterwards.
@@ -37,6 +38,18 @@ export async function saveDataset(ds) {
 
 export async function forgetDataset() {
   try { await tx('readwrite', (s) => s.delete('dataset')); } catch { /* nothing stored */ }
+}
+
+export async function loadBook() {
+  try { return (await tx('readonly', (s) => s.get('spellbook'))) ?? null; } catch { return null; }
+}
+
+export async function saveBook(book) {
+  try { await tx('readwrite', (s) => s.put(book, 'spellbook')); return true; } catch { return false; }
+}
+
+export async function forgetBook() {
+  try { await tx('readwrite', (s) => s.delete('spellbook')); } catch { /* nothing stored */ }
 }
 
 export function loadSettings() {

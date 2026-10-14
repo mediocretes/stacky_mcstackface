@@ -7,7 +7,8 @@ export const option = (value, label, current) =>
 
 export function spellName(s, level) {
   const later = s.level > level;
-  return `<span class="spell${later ? ' later' : ''}">${esc(s.name)}</span> <span class="lvl">${later ? `at L${s.level}` : `L${s.level}`}</span>`;
+  const tag = s.owned === false && !later ? ' <span class="tag">not scribed</span>' : '';
+  return `<span class="spell${later ? ' later' : ''}">${esc(s.name)}</span> <span class="lvl">${later ? `at L${s.level}` : `L${s.level}`}</span>${tag}`;
 }
 
 export const effects = (s) =>

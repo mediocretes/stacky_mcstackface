@@ -183,3 +183,13 @@ ol.slots { list-style: none; padding: 0; margin: 10px 0; display: flex; flex-dir
 .slot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 2.2em; }
 .slot.done .tick { color: var(--accent); font-weight: 700; }
 .slot label.quiet { color: var(--accent); cursor: pointer; }
+
+.tag { font-size: 0.7rem; background: var(--warn-bg); color: var(--warn-ink); border-radius: 8px; padding: 0 6px; margin-left: 4px; white-space: nowrap; }
+.next.scribe { border-top-style: solid; }
+.badge.scribe { background: var(--warn-bg); color: var(--warn-ink); }
+.note { background: var(--chip); padding: 8px 10px; border-radius: 8px; overflow-wrap: anywhere; }
+details.extras { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+details.extras p { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin: 8px 0; }
+.hints { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; }
+button.chip { font-size: 0.75rem; border-radius: 10px; padding: 1px 8px; border: 1px solid var(--line); background: transparent; color: var(--muted); }
+button.chip.differs { border-color: var(--accent); color: var(--accent); }

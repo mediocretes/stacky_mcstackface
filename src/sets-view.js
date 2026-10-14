@@ -2,7 +2,7 @@
 
 import { esc } from './format.js';
 import { option, spellName, effects } from './ui.js';
-import { GEMS, context, resolveSet, nextChanges, template, asText, ruleLabel } from './engine/sets.js';
+import { GEMS, context, resolveSet, nextChanges, template, asText, ruleLabel, rulesFor } from './engine/sets.js';
 import { ROLE_KEYS, role, METRICS, formatMetric } from './engine/roles.js';
 import { WANT_KEYS, want, candidates, isMagnitude } from './engine/wants.js';
 import { LEVEL_CAP } from './engine/layout.js';
@@ -10,11 +10,12 @@ import { LEVEL_CAP } from './engine/layout.js';
 // Contexts per level, kept until the trio, options or files change.
 function contexts(state) {
   const st = state.settings;
-  const key = JSON.stringify([st.trio, st.hunting, st.fightTicks, state.ds.source.loadedAt, state.ds.source.rows]);
+  const key = JSON.stringify([st.trio, st.hunting, st.fightTicks, state.ds.source.loadedAt, state.ds.source.rows, state.book?.loadedAt ?? null]);
   if (state.ctxCache?.key !== key) state.ctxCache = { key, map: new Map() };
   const { map } = state.ctxCache;
+  const owned = state.book ? new Set(state.book.names) : null;
   return (lv) => {
-    if (!map.has(lv)) map.set(lv, context(state.ds, st, lv));
+    if (!map.has(lv)) map.set(lv, context(state.ds, st, lv, owned));
     return map.get(lv);
   };
 }
@@ -56,6 +57,21 @@ function valueText(g) {
   return '';
 }
 
+const importButton = () => `<label class="button">Import your saved sets from the game<input type="file" accept=".ini" data-import hidden></label>`;
+
+// A gem holding one exact spell: which rules that spell fills, and what each would pick now.
+function hints(i, g, c) {
+  if (g.rule?.kind !== 'spell' || !g.spell) return '';
+  const chips = rulesFor(g.spell, c).slice(0, 3).map(({ rule, pick }) => {
+    const value = rule.kind === 'role' ? `role:${rule.key}` : `want:${rule.key}`;
+    const same = pick.spell?.id === g.spell.id;
+    const what = pick.state === 'ok' ? (same ? 'the same spell' : esc(pick.spell.name)) : 'nothing castable';
+    return `<button class="chip${same ? ' same' : ' differs'}" data-gem-rule="${i}" data-rule="${value}"
+      title="Make this gem ${esc(ruleLabel(rule))}">${esc(ruleLabel(rule))}: ${what}</button>`;
+  });
+  return chips.length ? `<div class="hints"><span class="small">fills</span> ${chips.join('')}</div>` : '';
+}
+
 function copiedNote(c) {
   if (!c) return '';
   if (typeof c === 'string') return `<p class="small" data-copied>${esc(c)}</p>`;
@@ -76,7 +92,8 @@ export function setsView(state) {
     return `${intro}${undo}<div class="actions">
       <button class="button primary" data-act="new-set" data-template="fight">Start a fighting set</button>
       <button class="button" data-act="new-set" data-template="buffs">Start a buff set</button>
-      <button class="button" data-act="new-set" data-template="">Start an empty set</button></div>`;
+      <button class="button" data-act="new-set" data-template="">Start an empty set</button>
+      ${importButton()}</div>`;
   }
 
   const ai = activeIndex(st);
@@ -95,16 +112,20 @@ export function setsView(state) {
     const badges = [
       isNew ? `<span class="badge new">new since L${cmp}${was.state === 'ok' ? ` — was ${esc(was.spell.name)}` : ''}</span>` : '',
       next[i] ? `<span class="badge">→ ${esc(next[i].spell.name)} at L${next[i].level}</span>` : '',
+      g.unscribed ? `<span class="badge scribe">better, not scribed: ${esc(g.unscribed.name)}</span>` : '',
     ].join('');
     let got = '';
     if (g.state === 'ok') got = `${spellName(g.spell, st.level)} <span class="val">${esc(valueText(g))}</span><div class="sub">${effects(g.spell)}</div>`;
     else if (g.state === 'later') got = `<span class="none">nothing yet —</span> ${spellName(g.spell, st.level)}`;
-    else if (g.state === 'none') got = '<span class="none">nothing in this trio fits</span>';
+    else if (g.state === 'none' && g.rule?.kind === 'spell') {
+      const known = state.ds.spells.find((x) => x.id === g.rule.id);
+      got = `<span class="none">${known ? `${esc(known.name)} — not a spell this trio can cast` : `spell #${g.rule.id} — not one this page knows`}</span>`;
+    } else if (g.state === 'none') got = '<span class="none">nothing in this trio fits</span>';
     return `<li class="gem${isNew ? ' changed' : ''}">
       <span class="n">${i + 1}</span>
       <div class="rule">${gemControls(i, g.rule, c, spellOptions)}
         <span class="move"><button class="quiet" data-gem-up="${i}" aria-label="move up"${i === 0 ? ' disabled' : ''}>↑</button><button class="quiet" data-gem-down="${i}" aria-label="move down"${i === GEMS - 1 ? ' disabled' : ''}>↓</button></span></div>
-      <div class="got">${got}${badges ? `<div class="badges">${badges}</div>` : ''}</div>
+      <div class="got">${got}${badges ? `<div class="badges">${badges}</div>` : ''}${hints(i, g, c)}</div>
     </li>`;
   }).join('');
 
@@ -125,6 +146,7 @@ export function setsView(state) {
       <button class="button" data-act="copy-text">Copy as text</button>
       <button class="button" data-act="copy-link">Copy a link to these sets</button>
       <button class="quiet" data-act="delete-set">Delete this set</button>
+      ${importButton()}
     </p>
     ${copiedNote(state.copied)}`;
 }
@@ -212,6 +234,10 @@ function sanitizeRule(r) {
 export function onSetsClick(el, state, set, render) {
   const st = state.settings;
   if (el.dataset.setTab !== undefined) set({ activeSet: Number(el.dataset.setTab) }, { compute: false });
+  else if (el.dataset.gemRule !== undefined) {
+    const [kind, key] = el.dataset.rule.split(':');
+    updateGems(state, set, (gems) => { gems[Number(el.dataset.gemRule)] = { kind, key }; });
+  }
   else if (el.dataset.gemUp !== undefined || el.dataset.gemDown !== undefined) {
     const i = Number(el.dataset.gemUp ?? el.dataset.gemDown);
     const j = el.dataset.gemUp !== undefined ? i - 1 : i + 1;
