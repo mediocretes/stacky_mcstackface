@@ -28,9 +28,11 @@ export const F = {
   desc: 86, // description string id, dbstr type 6
   category: 87, // dbstr type 5
   subcategory: 88, // dbstr type 5
-  // 1 on rows that are not a player's spell: whole-file, every "Item Benefit:" row and every
-  // beta-test row; within levels 1-50, exactly the three item benefits. Read from its carriers,
-  // not documented anywhere, so the page says how many rows it left out because of it.
+  // 1 on rows that are not a player's spell: AA and item abilities, triggers, test rows, every
+  // one with a class level; within levels 1-50, exactly the three item benefits. The column is
+  // not a yes/no flag: -1 sits on many ordinary player spells, and 2 on a few rows nobody has
+  // explained, so only 1 is read. Read from its carriers, not documented anywhere, so the page
+  // says how many rows it left out because of it.
   notPlayer: 131,
   line: 166,
   slots: 173, // n|spa|base|base2|formula|max, joined by $
