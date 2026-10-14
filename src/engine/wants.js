@@ -3,7 +3,7 @@
 // spells that each carry several. Where the number is not a size (an item id, a presence
 // flag), candidates are listed by level instead.
 
-import { SPEC } from './spec.js';
+import { SPEC } from './vocab.js';
 import { PERMANENT } from './formulas.js';
 import { effectSign, negativeHp, PET_TARGETS, ID_SPAS, FLAG_SPAS, PREFERENCE_SPAS, COORDINATE_SPAS } from './roles.js';
 

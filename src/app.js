@@ -9,6 +9,7 @@ import { mergeImported } from './engine/sets.js';
 import { bundle, chainCaution, formatMetric, METRICS, HUNTS } from './engine/roles.js';
 import { option, spellName, effects } from './ui.js';
 import { setsView, onSetsChange, onSetsClick, readShareLink } from './sets-view.js';
+import { sections } from './groups.js';
 import * as store from './store.js';
 import { esc, seconds, castTime, target, skill, classes, description } from './format.js';
 
@@ -16,6 +17,7 @@ const DEFAULTS = {
   trio: ['BRD', 'SHD', 'SHM'], level: 30, hunting: 'generic', fightTicks: null,
   tab: 'best', metrics: {}, show: 'castable', query: '', sort: 'level',
   sets: [], activeSet: 0, compareLevel: null, lastImport: null,
+  bard: { aura: 0, jamFest: 0, singingMastery: 0 },
 };
 
 const state = {
@@ -33,6 +35,7 @@ const state = {
   note: null, // what the last file read did
   fileError: null, // why the last file could not be read
   filesOpen: false, // the file panel, once the two needed files are in; always open before
+  sections: {}, // open or closed, for each <details> the player has toggled or edited inside
 };
 
 const root = document.getElementById('app');
@@ -272,6 +275,26 @@ function incomingBanner() {
     <button class="button" data-act="use-shared">Use them</button> <button class="quiet" data-act="ignore-shared">Ignore</button></div>`;
 }
 
+// The bard's AAs that change songs. The game does not write them to any file this page reads,
+// so they are typed in; each is one number from the AA window.
+function bardInputs(st) {
+  const b = st.bard ?? {};
+  const field = (key, label, max) => `<label>${label} <input type="number" min="0" max="${max}" value="${esc(b[key] ?? 0)}" data-bard="${key}"></label>`;
+  return `<details class="bard" ${details('bard', !(b.aura || b.jamFest || b.singingMastery))}><summary>Bard AAs</summary>
+    <div class="row">${field('aura', 'Symphonic Aura', 12)}${field('jamFest', 'Jam Fest', 5)}${field('singingMastery', 'Singing Mastery', 4)}</div>
+    <p class="small">Ranks, from your AA window. Jam Fest makes songs read 1, 3, 5, 6 or 7 levels higher. Singing Mastery's
+    bonus is applied to Singing songs' damage shields, the one effect it has been measured on. Symphonic Aura's rank is how many
+    songs a set that runs it gets sung for it (on the Sets tab).</p>
+  </details>`;
+}
+
+// A collapsible section stays the way the player left it. Its first state comes from `first`;
+// after any toggle, or any edit inside it, the page remembers and never changes it on its own.
+function details(name, first) {
+  const open = name in state.sections ? state.sections[name] : first;
+  return `data-section="${name}"${open ? ' open' : ''}`;
+}
+
 function setup() {
   const st = state.settings;
   const classSelect = (i) => `<select data-trio="${i}" aria-label="class ${i + 1}">${CLASSES.map((c) => option(c, `${c} — ${CLASS_NAMES[c]}`, st.trio[i])).join('')}</select>`;
@@ -280,7 +303,7 @@ function setup() {
     <div class="row">${classSelect(0)}${classSelect(1)}${classSelect(2)}
       <label class="level">Level <input type="number" min="1" max="${LEVEL_CAP}" value="${esc(st.level)}" data-level></label></div>
     <p class="small">A trio's level is the lowest of its three classes; spells above it are shown as upgrades to come.</p>
-    <details${st.hunting !== 'generic' || st.fightTicks ? ' open' : ''}><summary>Options</summary>
+    <details ${details('options', st.hunting !== 'generic' || Boolean(st.fightTicks))}><summary>Options</summary>
       <div class="row">
         <label>Fighting <select data-hunting>${HUNTS.map((h) => option(h, h === 'generic' ? 'anything' : h, st.hunting)).join('')}</select></label>
         <label>Fight length <input type="number" min="1" max="200" placeholder="full" value="${esc(st.fightTicks ?? '')}" data-fight> ticks</label>
@@ -288,6 +311,7 @@ function setup() {
       <p class="small">"Fighting" admits spells that only work on undead, summoned or animals. Fight length
       cuts damage-over-time off when the mob dies (a tick is 6 seconds); leave it empty to count the full duration.</p>
     </details>
+    ${st.trio.includes('BRD') ? bardInputs(st) : ''}
     ${state.incoming ? incomingBanner() : ''}
     ${state.error ? `<p class="error">${esc(state.error)}</p>` : ''}
   </section>`;
@@ -336,18 +360,6 @@ function bestView() {
     ${absent.length ? `<p class="small">Nothing in this trio for: ${esc(absent.join(', '))}.</p>` : ''}`;
 }
 
-const WANT_GROUPS = [
-  ['Health and defense', ['max_hp', 'armor_class', 'regen', 'instant_heal', 'damage_shield', 'rune', 'invulnerability', 'spell_reflect', 'melee_proc', 'hate_on_attack']],
-  ['Stats', ['strength', 'stamina', 'agility', 'dexterity', 'charisma', 'intelligence', 'wisdom', 'attack']],
-  ['Resists', ['magic_resist', 'fire_resist', 'cold_resist', 'poison_resist', 'disease_resist']],
-  ['Mana and endurance', ['mana_regen', 'hp_to_mana', 'endurance_regen']],
-  ['Cures', ['cure_poison', 'cure_disease', 'cure_curse', 'cure_blindness', 'dispel']],
-  ['Movement and senses', ['movement', 'levitate', 'water_breathing', 'invisibility', 'see_invisible', 'infravision', 'ultravision', 'vision_range', 'see_through', 'sense', 'eye_of_zomm', 'true_north']],
-  ['Travel and escape', ['gate', 'bind_affinity', 'shadow_step', 'feign_death']],
-  ['Pets and summoning', ['summon_pet', 'summon_undead', 'pet_ward', 'pet_reclaim', 'recall_pet', 'pet_size', 'summon_item', 'summon_armor']],
-  ['Appearance', ['model_size', 'illusion']],
-];
-
 function buffsView() {
   const lvl = state.result.level;
   const rows = state.result.wants.filter((w) => w.count > 0);
@@ -374,15 +386,11 @@ function buffsView() {
     ${absent.length ? `<p class="small">Nothing in this trio for: ${esc(absent.join(', '))}.</p>` : ''}`;
 }
 
+// The Buffs tab's rows under the same sections the gem picker uses.
 function grouped(rows) {
-  const seen = new Set();
-  const out = WANT_GROUPS.map(([g, keys]) => {
-    const ws = keys.map((k) => rows.find((w) => w.key === k)).filter(Boolean);
-    ws.forEach((w) => seen.add(w.key));
-    return [g, ws];
-  });
-  out.push(['Other', rows.filter((w) => !seen.has(w.key))]);
-  return out.filter(([, ws]) => ws.length);
+  const byKey = new Map(rows.map((w) => [w.key, w]));
+  return sections((kind, key) => kind === 'want' && byKey.has(key))
+    .map(([title, items]) => [title, items.map((r) => byKey.get(r.key))]);
 }
 
 function spellRows() {
@@ -440,19 +448,36 @@ function main() {
   </section>`;
 }
 
+// The focused control, as a selector that finds its replacement after the page is redrawn.
+function focusKey(el) {
+  if (!el || el === document.body || !root.contains(el)) return null;
+  const a = [...el.attributes].find((x) => x.name.startsWith('data-'));
+  return a ? `[${a.name}${a.value ? `="${CSS.escape(a.value)}"` : ''}]` : null;
+}
+
 function render() {
-  const focus = document.activeElement?.matches?.('[data-query]') ? document.activeElement.selectionStart : null;
+  const active = document.activeElement;
+  const key = focusKey(active);
+  const caret = active?.matches?.('[data-query]') ? active.selectionStart : null;
   root.innerHTML = filesPanel() + setup() + main();
-  if (focus !== null) {
-    const q = root.querySelector('[data-query]');
-    if (q) { q.focus(); q.setSelectionRange(focus, focus); }
+  const again = key && root.querySelector(key);
+  if (again) {
+    again.focus();
+    if (caret !== null) again.setSelectionRange(caret, caret);
   }
 }
 
 // ---- events -------------------------------------------------------------------------------
 
+// <details> fires `toggle` without bubbling, so listen in the capture phase.
+document.addEventListener('toggle', (e) => {
+  if (e.target.matches?.('details[data-section]')) state.sections[e.target.dataset.section] = e.target.open;
+}, true);
+
 document.addEventListener('change', (e) => {
   const el = e.target;
+  const section = el.closest?.('details[data-section]');
+  if (section) state.sections[section.dataset.section] = section.open;
   if (state.ds && onSetsChange(el, state, set)) return;
   if (el.matches('[data-pick]')) takeFiles(el.files);
   else if (el.matches('[data-trio]')) {
@@ -463,6 +488,11 @@ document.addEventListener('change', (e) => {
     const n = Math.min(LEVEL_CAP, Math.max(1, parseInt(el.value, 10) || 1));
     set({ level: n });
   } else if (el.matches('[data-hunting]')) set({ hunting: el.value });
+  else if (el.matches('[data-bard]')) {
+    const max = { aura: 12, jamFest: 5, singingMastery: 4 }[el.dataset.bard];
+    const n = Math.min(max, Math.max(0, parseInt(el.value, 10) || 0));
+    set({ bard: { ...state.settings.bard, [el.dataset.bard]: n } });
+  }
   else if (el.matches('[data-fight]')) {
     const n = parseInt(el.value, 10);
     set({ fightTicks: n > 0 ? n : null });

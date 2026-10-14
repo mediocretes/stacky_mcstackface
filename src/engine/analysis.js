@@ -2,6 +2,7 @@
 // best spell you can cast now and the next one that beats it, and the same for every buff.
 
 import { buildPool } from './pool.js';
+import { bardEffects } from './aura.js';
 import { classify, calibrateBurst, rank, unvalued, ROLE_KEYS, role } from './roles.js';
 import { WANT_KEYS, want, candidates, isMagnitude, displayCoverage } from './wants.js';
 
@@ -28,7 +29,7 @@ function pick(ranked, level) {
 
 export function analyze(ds, settings, owned = null) {
   const { trio, level, hunting = 'generic', fightTicks = null, metrics = {} } = settings;
-  const { pool, unresolvable } = buildPool(ds, trio, level, { fightTicks, owned });
+  const { pool, unresolvable } = buildPool(ds, trio, level, { fightTicks, owned, bard: bardEffects(settings) });
   const ctx = { hunting, burstThreshold: calibrateBurst(pool, hunting), fightTicks };
   const members = classify(pool, ctx);
 

@@ -1,7 +1,7 @@
 // Which spells fill which ranked role, how each role is ranked, and how an effect is put
 // into words. The roles themselves are data, in spec.js.
 
-import { SPEC } from './spec.js';
+import { SPEC } from './vocab.js';
 import { PERMANENT } from './formulas.js';
 
 // ---- effect vocabulary -------------------------------------------------------------------
@@ -27,7 +27,7 @@ export const SPA_WORDS = {
   120: 'healing taken', 121: 'heal on hit', 124: 'spell damage %', 148: 'stacking blocker',
   149: 'stacking overwrite', 158: 'spell reflect', 163: 'melee absorb', 164: 'sense trap',
   165: 'disarm trap', 166: 'pick lock', 189: 'endurance regen', 192: 'hate', 298: 'pet size',
-  457: 'lifetap',
+  334: 'song damage', 457: 'lifetap',
 };
 
 export const spaWord = (spa) => SPA_WORDS[spa] ?? `effect ${spa}`;
@@ -207,6 +207,7 @@ export const METRICS = {
   swing_atk: { label: 'attack moved, both ends', fn: (s) => swing(s, 2) },
   swing_str: { label: 'strength moved, both ends', fn: (s) => swing(s, 4) },
   duration: { label: 'duration', fn: (s) => (s.ticks === PERMANENT ? Infinity : s.ticks) },
+  song_tick: { label: 'damage a tick to everything around you', fn: (s) => sum(s, 334, 'neg') },
 };
 
 // [[spell, value]] best first; spells the metric cannot value are left out (see `unvalued`).
@@ -239,6 +240,7 @@ const FORMATS = {
   breadth: (v) => `${v} resist${v === 1 ? '' : 's'}`,
   debuff_total: (v) => `-${v} across resists`,
   duration: (v) => (v === Infinity ? 'permanent' : `${v * 6} s`),
+  song_tick: (v) => `${v} a tick`,
 };
 export function formatMetric(metric, v) {
   if (FORMATS[metric]) return FORMATS[metric](v);
@@ -273,6 +275,7 @@ export function bundle(spell, { friendly = false } = {}) {
       else out.push(`${100 - x.display}% slow${floorLabel(spell)}`);
       continue;
     }
+    if (friendly && x.spa === 334 && x.base < 0) { out.push(`${x.display} damage a tick${floorLabel(spell)}`); continue; }
     if (friendly && spell.beneficial && NEGATIVE_IS_BENEFIT.has(x.spa)) {
       out.push(x.spa === 59 ? `${x.display} damage shield${floorLabel(spell)}`
         : `cures ${x.display} ${word}${x.display === 1 ? '' : 's'}${floorLabel(spell)}`);

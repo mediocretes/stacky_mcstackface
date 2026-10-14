@@ -2,23 +2,30 @@
 
 import { esc } from './format.js';
 import { option, spellName, effects } from './ui.js';
-import { GEMS, context, resolveSet, nextChanges, template, asText, ruleLabel, rulesFor } from './engine/sets.js';
-import { ROLE_KEYS, role, METRICS, formatMetric } from './engine/roles.js';
-import { WANT_KEYS, want, candidates, isMagnitude } from './engine/wants.js';
+import { GEMS, context, resolveSet, nextChanges, template, asText, ruleLabel, rulesFor, resolveWithAura, auraTemplate } from './engine/sets.js';
+import { bardRanks, verdict, band, eligible } from './engine/aura.js';
+import { role, METRICS, formatMetric } from './engine/roles.js';
+import { want, candidates, isMagnitude } from './engine/wants.js';
 import { LEVEL_CAP } from './engine/layout.js';
+import { sections } from './groups.js';
 
-// Contexts per level, kept until the trio, options or files change.
+// Contexts per level (and per singing bonus, for a set whose aura sings Amplification), kept
+// until the trio, options, bard AAs or files change.
 function contexts(state) {
   const st = state.settings;
-  const key = JSON.stringify([st.trio, st.hunting, st.fightTicks, state.ds.source.loadedAt, state.ds.source.rows, state.book?.loadedAt ?? null]);
+  const key = JSON.stringify([st.trio, st.hunting, st.fightTicks, st.bard ?? null, state.ds.source.loadedAt, state.ds.source.rows, state.book?.loadedAt ?? null]);
   if (state.ctxCache?.key !== key) state.ctxCache = { key, map: new Map() };
   const { map } = state.ctxCache;
   const owned = state.book ? new Set(state.book.names) : null;
-  return (lv) => {
-    if (!map.has(lv)) map.set(lv, context(state.ds, st, lv, owned));
-    return map.get(lv);
+  return (lv, extra = 0) => {
+    const k = `${lv}:${extra}`;
+    if (!map.has(k)) map.set(k, context(state.ds, st, lv, owned, extra));
+    return map.get(k);
   };
 }
+
+// Does this set run the Symphonic Aura? Only with a bard in the trio and a rank above 0.
+const auraOn = (st, s) => Boolean(s.aura) && bardRanks(st).aura > 0;
 
 const emptyGems = () => Array.from({ length: GEMS }, () => null);
 const activeIndex = (st) => Math.min(Math.max(st.activeSet ?? 0, 0), (st.sets?.length ?? 1) - 1);
@@ -28,15 +35,20 @@ function ruleValue(rule) {
   return rule.kind === 'spell' ? 'spell' : `${rule.kind}:${rule.key}`;
 }
 
-function gemControls(i, rule, c, spellOptions) {
-  const roles = ROLE_KEYS.filter((k) => (c.members[k] ?? []).length > 0);
-  const wants = WANT_KEYS.filter((k) => candidates(c.pool, k).length > 0);
+// The rules this trio can fill at all, as sections; in an aura gem, only those a song can fill.
+// The rule a gem already holds is always listed, so a select never loses its value.
+function ruleSections(c, auraGem, rule) {
+  const spells = (kind, key) => (kind === 'role' ? c.members[key] ?? [] : candidates(c.pool, key).map(([s]) => s));
+  const ok = (kind, key) => (rule?.kind === kind && rule.key === key)
+    || (auraGem ? spells(kind, key).some((s) => eligible(s)) : spells(kind, key).length > 0);
+  return sections(ok);
+}
+
+function gemControls(i, rule, c, spellOptions, auraGem) {
   const cur = ruleValue(rule);
   let html = `<select data-gem-kind="${i}" aria-label="gem ${i + 1}">
-    ${option('', '— empty —', cur)}
-    <optgroup label="Best for a job">${roles.map((k) => option(`role:${k}`, `best ${role(k).label}`, cur)).join('')}</optgroup>
-    <optgroup label="Buff">${wants.map((k) => option(`want:${k}`, want(k).label, cur)).join('')}</optgroup>
-    <optgroup label="Exactly">${option('spell', 'a spell I choose', cur)}</optgroup>
+    ${option('', '— empty —', cur)}${option('spell', 'a spell I choose', cur)}
+    ${ruleSections(c, auraGem, rule).map(([title, items]) => `<optgroup label="${esc(title)}">${items.map((r) => option(`${r.kind}:${r.key}`, r.name, cur)).join('')}</optgroup>`).join('')}
   </select>`;
   if (rule?.kind === 'role' && role(rule.key)?.metrics.length > 1) {
     const r = role(rule.key);
@@ -61,9 +73,9 @@ function valueText(g) {
 const importButton = () => '<button class="quiet" data-act="open-files">Import your saved sets from the game</button>';
 
 // A gem holding one exact spell: which rules that spell fills, and what each would pick now.
-function hints(i, g, c) {
+function hints(i, g, c, auraGem) {
   if (g.rule?.kind !== 'spell' || !g.spell) return '';
-  const chips = rulesFor(g.spell, c).slice(0, 3).map(({ rule, pick }) => {
+  const chips = rulesFor(g.spell, c, { auraOnly: auraGem }).slice(0, 3).map(({ rule, pick }) => {
     const value = rule.kind === 'role' ? `role:${rule.key}` : `want:${rule.key}`;
     const same = pick.spell?.id === g.spell.id;
     const what = pick.state === 'ok' ? (same ? 'the same spell' : esc(pick.spell.name)) : 'nothing castable';
@@ -71,6 +83,43 @@ function hints(i, g, c) {
       title="Make this gem ${esc(ruleLabel(rule))}">${esc(ruleLabel(rule))}: ${what}</button>`;
   });
   return chips.length ? `<div class="hints"><span class="small">fills</span> ${chips.join('')}</div>` : '';
+}
+
+const SPA = { 1: 'armor class', 4: 'strength', 11: 'attack speed', 47: 'cold resist', 49: 'disease resist', 59: 'damage shield', 334: 'song damage' };
+
+function auraSummary(a, resolved, st) {
+  const r = bardRanks(st);
+  const names = a.pulsed.map((i) => esc(resolved[i].spell.name));
+  const lines = [
+    `<p><b>Symphonic Aura, rank ${a.rank}</b> sings ${names.length ? names.join(', ') : 'nothing yet'} — all together, every 6 seconds,
+      so a song's own duration does not matter. ${names.length < a.rank ? `It has room for ${a.rank - names.length} more.` : ''}</p>`,
+  ];
+  const levels = a.songLevels ? `Songs read ${a.songLevels} level${a.songLevels === 1 ? '' : 's'} above yours (Jam Fest ${r.jamFest}).` : '';
+  const parts = [];
+  if (r.singingMastery) parts.push(`Singing Mastery ${r.singingMastery} +${r.singingMastery * 20}%`);
+  if (a.amp) parts.push(`Amplification +${a.amp * 10}%`);
+  const singing = a.singing
+    ? `Singing songs' damage shields are ×${((10 + a.singing) / 10).toFixed(1)} (${parts.join(', ')}). Their other effects probably scale too, but only the
+       shield has been measured, so the rest are shown unscaled.`
+    : '';
+  if (levels || singing) lines.push(`<p class="small">${levels} ${singing}</p>`);
+  for (const x of a.conflicts) {
+    const what = x.shared.map((s) => SPA[s.spa] ?? `effect ${s.spa}`).join(', ');
+    lines.push(x.kind === 'refused'
+      ? `<p class="warn">${esc(x.refuse.name)} is refused by ${esc(x.keep.name)}: both put ${esc(what)} in the same slot, and the game keeps only the larger song. It adds nothing.</p>`
+      : `<p class="warn">${esc(x.refuse.name)}'s ${x.kind} does not add to ${esc(x.keep.name)}'s: only the larger counts. Its other effects still hold.</p>`);
+  }
+  return `<div class="aura-box">${lines.join('')}</div>`;
+}
+
+function auraBadges(i, a, resolved) {
+  if (!a) return '';
+  const g = resolved[i];
+  if (a.pulsed.includes(i)) return '<span class="badge aura">♪ sung by the aura</span>';
+  if (a.dead.includes(i)) return '<span class="badge scribe">dead: the aura does not reach this gem, and while it is on this song cannot be sung by hand</span>';
+  if (a.skipped.includes(i)) return `<span class="badge">the aura passes over this — ${esc(verdict(g.spell).why)} — and reaches one gem further up</span>`;
+  if (a.unknown.includes(i)) return `<span class="badge">may or may not be sung by the aura: ${esc(verdict(g.spell).why)}</span>`;
+  return '';
 }
 
 function copiedNote(c) {
@@ -99,10 +148,14 @@ export function setsView(state) {
 
   const ai = activeIndex(st);
   const s = sets[ai];
-  const resolved = resolveSet(s.gems, c);
+  const withAura = auraOn(st, s);
+  const run = resolveWithAura(s.gems, st, st.level, at, { aura: withAura });
+  const { resolved, opts } = run;
+  const a = run.aura;
+  const shown = run.c; // the context the shown numbers come from (with Amplification's bonus, when it is sung)
   const cmp = st.compareLevel ?? st.level - 1;
-  const before = cmp >= 1 && cmp <= LEVEL_CAP && cmp !== st.level ? resolveSet(s.gems, at(cmp)) : null;
-  const next = nextChanges(s.gems, st.level, at);
+  const before = cmp >= 1 && cmp <= LEVEL_CAP && cmp !== st.level ? resolveSet(s.gems, at(cmp), opts) : null;
+  const next = nextChanges(s.gems, st.level, at, opts);
   const sorted = [...c.pool].sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
   const spellOptions = (id) => sorted.map((x) => option(x.id, `L${x.level} ${x.name}`, id)).join('');
   const changed = before ? resolved.filter((g, i) => g.state === 'ok' && before[i].spell?.id !== g.spell.id && before[i].state === 'ok').length : 0;
@@ -114,7 +167,9 @@ export function setsView(state) {
       isNew ? `<span class="badge new">new since L${cmp}${was.state === 'ok' ? ` — was ${esc(was.spell.name)}` : ''}</span>` : '',
       next[i] ? `<span class="badge">→ ${esc(next[i].spell.name)} at L${next[i].level}</span>` : '',
       g.unscribed ? `<span class="badge scribe">better, not scribed: ${esc(g.unscribed.name)}</span>` : '',
+      auraBadges(i, a, resolved),
     ].join('');
+    const auraGem = Boolean(a?.band.has(i));
     let got = '';
     if (g.state === 'ok') got = `${spellName(g.spell, st.level)} <span class="val">${esc(valueText(g))}</span><div class="sub">${effects(g.spell)}</div>`;
     else if (g.state === 'later') got = `<span class="none">nothing yet —</span> ${spellName(g.spell, st.level)}`;
@@ -122,15 +177,20 @@ export function setsView(state) {
       const known = state.ds.spells.find((x) => x.id === g.rule.id);
       got = `<span class="none">${known ? `${esc(known.name)} — not a spell this trio can cast` : `spell #${g.rule.id} — not one this page knows`}</span>`;
     } else if (g.state === 'none') got = '<span class="none">nothing in this trio fits</span>';
-    return `<li class="gem${isNew ? ' changed' : ''}">
-      <span class="n">${i + 1}</span>
-      <div class="rule">${gemControls(i, g.rule, c, spellOptions)}
+    return `<li class="gem${isNew ? ' changed' : ''}${auraGem ? ' aura' : ''}">
+      <span class="n">${i + 1}${auraGem ? '<span class="note-aura" title="an aura gem: its rule chooses only songs the aura sings">♪</span>' : ''}</span>
+      <div class="rule">${gemControls(i, g.rule, c, spellOptions, auraGem)}
         <span class="move"><button class="quiet" data-gem-up="${i}" aria-label="move up"${i === 0 ? ' disabled' : ''}>↑</button><button class="quiet" data-gem-down="${i}" aria-label="move down"${i === GEMS - 1 ? ' disabled' : ''}>↓</button></span></div>
-      <div class="got">${got}${badges ? `<div class="badges">${badges}</div>` : ''}${hints(i, g, c)}</div>
+      <div class="got">${got}${badges ? `<div class="badges">${badges}</div>` : ''}${hints(i, g, shown, auraGem)}</div>
     </li>`;
   }).join('');
 
   const tabsHtml = sets.map((x, i) => `<button role="tab" aria-selected="${i === ai}" data-set-tab="${i}">${esc(x.name)}</button>`).join('');
+  const bard = st.trio.includes('BRD');
+  const rank = bardRanks(st).aura;
+  const auraToggle = bard ? `<label class="check"><input type="checkbox" data-set-aura${s.aura ? ' checked' : ''}> runs the Symphonic Aura</label>
+      ${s.aura && !rank ? '<span class="small">— set your Symphonic Aura rank under Your trio</span>' : ''}` : '';
+  const auraFill = withAura ? `<button class="quiet" data-act="fill-aura">Fill the aura's gems with songs</button>` : '';
   const blank = s.gems.every((g) => !g);
   return `${intro}${undo}
     <nav class="tabs sets" role="tablist">${tabsHtml}<button data-act="new-set" data-template="" aria-label="new set">+ New</button></nav>
@@ -138,7 +198,9 @@ export function setsView(state) {
       <label>Name <input type="text" value="${esc(s.name)}" data-set-name maxlength="40"></label>
       <label>Compare with level <input type="number" min="1" max="${LEVEL_CAP}" value="${esc(cmp)}" data-compare></label>
       ${before ? `<span class="small">${changed ? `${changed} gem${changed === 1 ? '' : 's'} changed since L${cmp}` : `nothing changed since L${cmp}`}</span>` : ''}
+      ${auraToggle} ${auraFill}
     </div>
+    ${a ? auraSummary(a, resolved, st) : ''}
     ${blank ? `<p class="actions">Fill it from a starting point:
       <button class="button" data-act="fill" data-template="fight">fighting</button>
       <button class="button" data-act="fill" data-template="buffs">buffs</button></p>` : ''}
@@ -183,6 +245,8 @@ export function onSetsChange(el, state, set) {
     updateGems(state, set, (gems) => { gems[Number(el.dataset.gemSpell)].id = Number(el.value); });
   } else if (el.matches('[data-set-name]')) {
     updateGems(state, set, (gems, s) => { s.name = el.value.trim() || 'Untitled'; });
+  } else if (el.matches('[data-set-aura]')) {
+    updateGems(state, set, (gems, s) => { s.aura = el.checked; });
   } else if (el.matches('[data-compare]')) {
     const n = parseInt(el.value, 10);
     set({ compareLevel: n >= 1 && n <= LEVEL_CAP ? n : null }, { compute: false });
@@ -252,6 +316,12 @@ export function onSetsClick(el, state, set, render) {
     else sets.push({ name: { fight: 'Fighting', buffs: 'Buffs' }[el.dataset.template] ?? `Set ${sets.length + 1}`, gems });
     state.undoSet = null;
     set({ sets, activeSet: el.dataset.act === 'fill' ? activeIndex(st) : sets.length - 1 }, { compute: false });
+  } else if (el.dataset.act === 'fill-aura') {
+    const rank = bardRanks(st).aura;
+    const rules = auraTemplate(contexts(state)(st.level), rank);
+    updateGems(state, set, (gems) => {
+      [...band(rank, gems.length)].sort((x, y) => y - x).forEach((gi, k) => { gems[gi] = rules[k] ?? gems[gi]; });
+    });
   } else if (el.dataset.act === 'delete-set') {
     const sets = structuredClone(st.sets);
     const ai = activeIndex(st);
