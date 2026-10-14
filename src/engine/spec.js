@@ -124,6 +124,20 @@ export const SPEC = {
         "target": "conditional"
       }
     },
+    "song_damage": {
+      "label": "song damage",
+      "diversity": "none",
+      "metrics": [
+        "song_tick"
+      ],
+      "match": {
+        "beneficial": false,
+        "slot": {
+          "spa": 334,
+          "sign": "negative"
+        }
+      }
+    },
     "heal": {
       "diversity": "none",
       "label": "heal",
@@ -490,6 +504,12 @@ export const SPEC = {
         85
       ],
       "label": "melee proc"
+    },
+    "singing_amplification": {
+      "spa": [
+        118
+      ],
+      "label": "singing amplification"
     },
     "mana_regen": {
       "spa": [
