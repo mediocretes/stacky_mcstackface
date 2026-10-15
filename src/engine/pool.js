@@ -13,7 +13,12 @@ import { toI } from './layout.js';
 
 const BRD = CLASSES.indexOf('BRD');
 const SINGING = 41; // the spell file's skill code for songs sung rather than played
-const DAMAGE_SHIELD = 59;
+// The effects the singing bonus scales on a beneficial Singing song: the damage shield, the seven
+// stats (4 strength … 10 charisma) and the five resists (46 fire … 50 magic). Measured on the
+// shield, strength and cold resist; the other stats and resists are inferred from those.
+// Left out: attack speed (read only at the haste cap, so unknown), armor class (the inventory
+// window shows it past a soft cap) and mana (never read).
+const SINGING_SCALES = new Set([59, 4, 5, 6, 7, 8, 9, 10, 46, 47, 48, 49, 50]);
 
 // A bard song: a row a bard can learn. Its level is the bard's, whoever else can cast it.
 export const isSong = (row) => row.levels[BRD] >= 1 && row.levels[BRD] <= 254;
@@ -43,12 +48,12 @@ export function parseSlots(raw, level, ds, { ticks = 0, strict = true, context, 
 
 // trio: three class codes. level: the trio's level. fightTicks: cut DoTs off at this length.
 // owned: the spell names in your spellbook, or null when none was given.
-// bard: what the bard's AAs do to songs, both measured in the log —
+// bard: what the bard's AAs do to songs, both measured in game —
 //   songLevels  Jam Fest: songs resolve this many levels above the trio's
 //   singing     tenths added to the singing bonus (Singing Mastery 2 a rank, Amplification its
-//               own value), applied to the damage shield of a Singing-skill song. The bonuses add:
-//               a shield of 6 read 7 at +2 and 11 at +9. Nothing else is scaled, because no other
-//               effect has been measured with it.
+//               own value), applied to the SINGING_SCALES effects of a beneficial Singing-skill
+//               song. The bonuses add: a shield of 6 read 7 at +2 and 11 at +9. A detrimental
+//               song is not scaled, because every reading was of a song on the player.
 // Returns { pool, unresolvable } — a spell with an unknown formula is left out and named.
 // Each spell's `owned` is true or false against the spellbook, or null without one.
 export function buildPool(ds, trio, level, { fightTicks = null, owned = null, bard = {} } = {}) {
@@ -125,10 +130,10 @@ export function buildPool(ds, trio, level, { fightTicks = null, owned = null, ba
       songLevels: bonus,
       singing: 0,
     };
-    if (song && s.skill === SINGING && singing > 0) {
+    if (song && s.skill === SINGING && s.beneficial !== 0 && singing > 0) {
       row.singing = singing;
       for (const x of slots) {
-        if (x.spa !== DAMAGE_SHIELD) continue;
+        if (!SINGING_SCALES.has(x.spa)) continue;
         x.value = Math.floor((x.value * (10 + singing)) / 10);
         x.display = Math.floor((x.display * (10 + singing)) / 10);
       }

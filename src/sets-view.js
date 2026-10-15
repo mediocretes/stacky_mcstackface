@@ -99,8 +99,8 @@ function auraSummary(a, resolved, st) {
   if (r.singingMastery) parts.push(`Singing Mastery ${r.singingMastery} +${r.singingMastery * 20}%`);
   if (a.amp) parts.push(`Amplification +${a.amp * 10}%`);
   const singing = a.singing
-    ? `Singing songs' damage shields are ×${((10 + a.singing) / 10).toFixed(1)} (${parts.join(', ')}). Their other effects probably scale too, but only the
-       shield has been measured, so the rest are shown unscaled.`
+    ? `Singing songs' damage shields, stats and resists are ×${((10 + a.singing) / 10).toFixed(1)} (${parts.join(', ')}). Their haste,
+       armor class and mana, and any song on a mob, are shown unscaled: those have not been measured.`
     : '';
   if (levels || singing) lines.push(`<p class="small">${levels} ${singing}</p>`);
   for (const x of a.conflicts) {
