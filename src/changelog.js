@@ -10,6 +10,11 @@
 export const CHANGELOG = [
   {
     date: '2026-10-14',
+    text: 'Bards: two song-damage songs in the aura, like Denon\'s Disruptive Discord and Chords of '
+      + 'Dissonance, are no longer shown as refusing each other. Tested in game, both land on every mob.',
+  },
+  {
+    date: '2026-10-14',
     text: 'Song damage is listed with the other damage rules, after damage over time, instead of last.',
   },
   {
