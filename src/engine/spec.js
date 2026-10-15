@@ -386,6 +386,125 @@ export const SPEC = {
           "Disempowering"
         ]
       }
+    },
+    "charm": {
+      "diversity": "none",
+      "label": "charm",
+      "metrics": [
+        "holds",
+        "duration"
+      ],
+      "match": {
+        "beneficial": false,
+        "slot": {
+          "spa": 22
+        }
+      },
+      "exclude": {
+        "target": [
+          "conditional",
+          16
+        ]
+      }
+    },
+    "mez": {
+      "diversity": "none",
+      "label": "mesmerize",
+      "metrics": [
+        "holds",
+        "duration"
+      ],
+      "match": {
+        "beneficial": false,
+        "slot": {
+          "spa": 31
+        }
+      },
+      "exclude": {
+        "target": "conditional"
+      }
+    },
+    "pacify": {
+      "diversity": "none",
+      "label": "pacify",
+      "metrics": [
+        "duration"
+      ],
+      "match": {
+        "slot": {
+          "spa": 18
+        }
+      },
+      "exclude": {
+        "target": "conditional"
+      }
+    },
+    "fear": {
+      "diversity": "none",
+      "label": "fear",
+      "metrics": [
+        "duration"
+      ],
+      "match": {
+        "beneficial": false,
+        "slot": {
+          "spa": 23
+        }
+      },
+      "exclude": {
+        "target": "conditional"
+      }
+    },
+    "root": {
+      "diversity": "none",
+      "label": "root",
+      "metrics": [
+        "duration"
+      ],
+      "match": {
+        "beneficial": false,
+        "slot": {
+          "spa": 99
+        }
+      },
+      "exclude": {
+        "target": "conditional"
+      }
+    },
+    "snare": {
+      "diversity": "none",
+      "label": "snare",
+      "metrics": [
+        "snare",
+        "duration"
+      ],
+      "match": {
+        "beneficial": false,
+        "slot": {
+          "spa": 3,
+          "sign": "negative"
+        }
+      },
+      "exclude": {
+        "target": "conditional"
+      }
+    },
+    "blind": {
+      "diversity": "none",
+      "label": "blind",
+      "metrics": [
+        "duration"
+      ],
+      "match": {
+        "beneficial": false,
+        "slot": {
+          "spa": 20,
+          "sign": "negative"
+        }
+      },
+      "exclude": {
+        "target": "conditional"
+      }
     }
   },
   "wants": {

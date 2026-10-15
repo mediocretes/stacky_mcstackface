@@ -10,6 +10,12 @@
 export const CHANGELOG = [
   {
     date: '2026-10-14',
+    text: 'Crowd control rules: charm, mesmerize, pacify, fear, root, snare and blind. Charm and mesmerize '
+      + 'are ranked by the highest level they hold, snare by how much it slows, the rest by how long they '
+      + 'last. "What you\'re fighting" admits the ones that only work on undead, summoned or animals.',
+  },
+  {
+    date: '2026-10-14',
     text: 'Bards: two song-damage songs in the aura, like Denon\'s Disruptive Discord and Chords of '
       + 'Dissonance, are no longer shown as refusing each other. Tested in game, both land on every mob.',
   },

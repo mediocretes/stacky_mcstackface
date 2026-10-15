@@ -30,13 +30,14 @@ two needed files are in, and again after each file you add; open it any time to 
 
 | Tab | What it shows |
 |---|---|
-| **Best picks** | For each ranked job, the best spell you can cast now, the next one that beats it, and every effect each carries. Most jobs can be ranked more than one way (damage per second, per mana, per cast…). |
+| **Best picks** | For each ranked job, the best spell you can cast now, the next one that beats it, and every effect each carries. Most jobs can be ranked more than one way (damage per second, per mana, per cast…). Crowd control is seven jobs — charm, mesmerize, pacify, fear, root, snare and blind: charm and mesmerize are ranked by the highest level they hold, snare by how much movement it takes, the rest by how long they last. |
 | **Buffs** | For each thing you might want on you — a stat, a resist, see invisible, run speed — the biggest you can cast now and the next bigger one. |
 | **Sets** | Rows of 14 gems. Each gem holds a rule (*best slow*, *strength buff*) or one spell you always want. Raise your level and the changed gems are marked, with what they replaced; every gem also shows when it will change next. Import the sets you saved in game: each gem then holds that exact spell, with the rules it fills beside it and what each rule would pick, one click to switch. Copy a set as text, or copy a link that carries your sets to someone else. |
 | **All spells** | Everything your trio can cast, now or later, searchable by name and effect, with the game's own description. |
 
-**Options:** what you are fighting (some spells only work on undead, summoned or animals), and a
-fight length, which cuts damage-over-time off when the mob would be dead.
+**Options:** what you are fighting (some spells, crowd control among them, only work on undead,
+summoned or animals, and are left out until you choose one), and a fight length, which cuts
+damage-over-time off when the mob would be dead.
 
 ## Bards and the Symphonic Aura
 

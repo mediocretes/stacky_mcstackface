@@ -14,6 +14,7 @@ export const GROUPS = [
   ['Slows and debuffs', [R('slow'), R('resist_debuff'), R('stat_tap_ac'), R('stat_tap_atk'), R('stat_tap_str')]],
   ['Haste and combat', [R('haste'), R('damage_shield'), W('damage_shield'), W('attack'), W('melee_proc'),
     W('hate_on_attack'), W('singing_amplification')]],
+  ['Crowd control', [R('charm'), R('mez'), R('pacify'), R('fear'), R('root'), R('snare'), R('blind')]],
   ['Defense', [W('max_hp'), W('armor_class'), W('rune'), W('spell_reflect'), W('invulnerability')]],
   ['Stats', [W('strength'), W('stamina'), W('agility'), W('dexterity'), W('charisma'), W('intelligence'), W('wisdom')]],
   ['Resists', [W('magic_resist'), W('fire_resist'), W('cold_resist'), W('poison_resist'), W('disease_resist')]],
