@@ -10,6 +10,11 @@
 export const CHANGELOG = [
   {
     date: '2026-10-14',
+    text: 'Bards: Singing Mastery and Amplification now raise a Singing song\'s stats and resists as well as '
+      + 'its damage shield, as measured in game. Its haste, armor class and mana are still shown unscaled.',
+  },
+  {
+    date: '2026-10-14',
     text: 'Song damage is listed with the other damage rules, after damage over time, instead of last.',
   },
   {
