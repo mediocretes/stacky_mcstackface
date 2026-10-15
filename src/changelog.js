@@ -10,6 +10,11 @@
 export const CHANGELOG = [
   {
     date: '2026-10-14',
+    text: 'Bards: two song-damage songs in the aura, like Denon\'s Disruptive Discord and Chords of '
+      + 'Dissonance, are no longer shown as refusing each other. Tested in game, both land on every mob.',
+  },
+  {
+    date: '2026-10-14',
     text: 'Bards: Singing Mastery and Amplification now raise a Singing song\'s stats and resists as well as '
       + 'its damage shield, as measured in game. Its haste, armor class and mana are still shown unscaled.',
   },

@@ -95,6 +95,12 @@ const strength = (x) => (x.spa === 11 && x.base < 100 ? 100 - x.value : Math.abs
 //   haste     attack speed never adds up, whatever slot it sits in: only the larger haste (or
 //             slow) counts, and the smaller song's other effects still hold (Anthem de Arms'
 //             haste never added to Jonthan's, while its strength did).
+//
+// On a mob, song damage (effect 334) never decides a refusal: two song-damage songs sharing its slot
+// were pulsed together in game, and every pulse landed both ticks on every mob. Only that effect was
+// tried, so two detrimental songs sharing anything else are still compared as above.
+const COEXIST_ON_A_MOB = new Set([334]);
+
 export function conflicts(songs) {
   const out = [];
   for (let i = 0; i < songs.length; i += 1) {
@@ -102,9 +108,10 @@ export function conflicts(songs) {
       const a = songs[i];
       const b = songs[j];
       if ((a.beneficial !== 0) !== (b.beneficial !== 0)) continue;
+      const onMob = a.beneficial === 0;
       const shared = [];
       for (const x of a.slots) {
-        if (IGNORED.has(x.spa) || x.value === 0) continue;
+        if (IGNORED.has(x.spa) || x.value === 0 || (onMob && COEXIST_ON_A_MOB.has(x.spa))) continue;
         const y = b.slots.find((z) => z.slot === x.slot && z.spa === x.spa && z.value !== 0);
         if (y) shared.push({ slot: x.slot, spa: x.spa, a: strength(x), b: strength(y) });
       }

@@ -298,6 +298,20 @@ test('aura: songs in each other\'s way', () => {
   assert.deepEqual(auraTemplate(c, 5).map((r) => r.key), ['haste', 'damage_shield', 'singing_amplification']);
 });
 
+test('aura: two song-damage songs both land on a mob; other shared effects still refuse', () => {
+  const s = (name, beneficial, slots) => ({ name, beneficial, slots });
+  const x = (slot, spa, value, base = -value) => ({ slot, spa, value, base });
+  const big = s('Test Big Song Damage', 0, [x(1, 334, 12)]);
+  const small = s('Test Small Song Damage', 0, [x(1, 334, 10)]);
+  assert.deepEqual(conflicts([big, small]), [], 'both tick on every mob');
+  const mezA = s('Test Mez A', 0, [x(1, 31, 2, 1)]);
+  const mezB = s('Test Mez B', 0, [x(1, 31, 1, 1)]);
+  assert.deepEqual(conflicts([mezA, mezB]).map((c) => c.kind), ['refused'], 'a shared mez was not tested, so it is still named');
+  const onYouA = s('Test Shield A', 1, [x(1, 334, 12)]);
+  const onYouB = s('Test Shield B', 1, [x(1, 334, 10)]);
+  assert.deepEqual(conflicts([onYouA, onYouB]).map((c) => c.kind), ['refused'], 'on you the rule is unchanged');
+});
+
 test('rule sections: most likely first, alphabetical within, nothing left over', async () => {
   const { sections } = await import('../src/groups.js');
   const all = sections(() => true);
