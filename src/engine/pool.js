@@ -16,8 +16,8 @@ const SINGING = 41; // the spell file's skill code for songs sung rather than pl
 // The effects the singing bonus scales on a beneficial Singing song: the damage shield, the seven
 // stats (4 strength … 10 charisma) and the five resists (46 fire … 50 magic). Measured on the
 // shield, strength and cold resist; the other stats and resists are inferred from those.
-// Left out: attack speed (read only at the haste cap, so unknown), armor class (the inventory
-// window shows it past a soft cap) and mana (never read).
+// Left out: attack speed (measured: with worn haste removed, a 23% song read 23% at a ×1.4
+// bonus), armor class (the inventory window shows it past a soft cap) and mana (never read).
 const SINGING_SCALES = new Set([59, 4, 5, 6, 7, 8, 9, 10, 46, 47, 48, 49, 50]);
 
 // A bard song: a row a bard can learn. Its level is the bard's, whoever else can cast it.

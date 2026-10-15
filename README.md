@@ -44,8 +44,8 @@ With a bard in the trio, *Your trio* asks for three AA ranks from your AA window
 
 - **Jam Fest** makes songs read 1, 3, 5, 6 or 7 levels higher, by rank.
 - **Singing Mastery** adds 20% a rank to the singing bonus. It is applied to a Singing-skill song
-  that lands on you: its damage shield, stats and resists. Its haste, armor class and mana are shown
-  unscaled, and so is a song on a mob.
+  that lands on you: its damage shield, stats and resists. Its haste does not scale (measured), and
+  its armor class and mana, and a song on a mob, are shown unscaled until they are.
 - **Symphonic Aura** is how many songs the aura sings for a set that runs it.
 
 On the Sets tab, tick **runs the Symphonic Aura** on the set that holds your songs. Then:
@@ -70,7 +70,8 @@ does not matter and more ranks do not thin the others. That, the conflict rules 
 were all read from a player's combat log and inventory window. The bonus was measured on a damage
 shield, strength and cold resist; the other stats and resists are assumed to follow. What it does
 not know yet: whether a song's haste adds to a spell's, which of two slows on a mob counts, and
-whether the singing bonus reaches a song's haste, armor class or mana, or a song on a mob.
+whether the singing bonus reaches a song's armor class or mana, or a song on a mob. (It does not
+reach haste: a 23% haste song read 23% with the bonus at ×1.4.)
 
 ## Your files and your data
 
