@@ -14,4 +14,7 @@ This repository is **public**. It holds code only.
 - **Engine changes are checked twice.** Run `npm test` here. The engine also has a parity check
   against the desktop tool on real client files, which lives with that tool; say when a change
   needs it run.
+- **Every change a player can see gets a changelog entry**, in the same pull request: one entry at
+  the top of `src/changelog.js` (newest first), in plain words about what changed for the player. A
+  pull request with no effect on the page (README, tests, tooling) adds none.
 - **No build step, no dependencies.** Plain ES modules that run in the browser and in Node.

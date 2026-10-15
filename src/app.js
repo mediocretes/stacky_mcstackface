@@ -11,6 +11,7 @@ import { option, spellName, effects } from './ui.js';
 import { setsView, onSetsChange, onSetsClick, readShareLink } from './sets-view.js';
 import { sections } from './groups.js';
 import * as store from './store.js';
+import { CHANGELOG } from './changelog.js';
 import { esc, seconds, castTime, target, skill, classes, description } from './format.js';
 
 const DEFAULTS = {
@@ -590,6 +591,14 @@ document.addEventListener('drop', (e) => {
 
 const versionTag = document.querySelector('[data-version]');
 if (versionTag) versionTag.textContent = document.querySelector('meta[name=version]')?.content ?? 'dev';
+
+// What's new, at the foot of the page: closed until opened, newest first (src/changelog.js).
+const changelog = document.querySelector('[data-changelog]');
+if (changelog) {
+  changelog.innerHTML = CHANGELOG.map((e) => `<li><time datetime="${esc(e.date)}">${esc(e.date)}</time> ${esc(e.text)}</li>`).join('');
+  const latest = document.querySelector('[data-changelog-latest]');
+  if (latest && CHANGELOG.length) latest.textContent = `— latest ${CHANGELOG[0].date}`;
+}
 
 // Development only: on a local server, #load=<dir> reads the two files from <dir> instead of
 // asking for them, so the page can be checked in a headless browser.
