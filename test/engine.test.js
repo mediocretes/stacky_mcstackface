@@ -262,6 +262,22 @@ test('aura: Jam Fest levels and the singing bonus', () => {
   assert.equal(bard(20).byId.get(21).slots[0].value, 140, 'a spell takes neither');
 });
 
+test('aura: the singing bonus reaches stats and resists, not haste, AC or a song on a mob', () => {
+  // str 11, cold resist 17, haste, AC 20, shield 6 — on you; the same str and resist on a mob; and on a drum.
+  const on = '1|4|11|0|100|0$2|47|17|0|100|0$3|11|110|0|100|0$4|1|20|0|100|0$5|59|-6|0|100|0';
+  const dsS = parseClientFiles([SPELLS,
+    song({ id: 40, name: 'Test Chorus', levels: { BRD: 5 }, slots: on, target: 41 }),
+    song({ id: 41, name: 'Test Dirge', levels: { BRD: 5 }, slots: '1|4|-11|0|100|0$2|47|-17|0|100|0', target: 5, beneficial: 0 }),
+    song({ id: 42, name: 'Test Drum Chorus', levels: { BRD: 5 }, slots: on, target: 41, skill: 70 }),
+  ].join('\n'), DBSTR);
+  const settings = { trio: BTRIO, bard: { singingMastery: 1 } };
+  const values = (extra, id) => context(dsS, settings, 20, null, extra).byId.get(id).slots.map((x) => x.value);
+  assert.deepEqual(values(0, 40), [13, 20, 110, 20, 7], '×1.2: str, resist and shield scale; haste and AC do not');
+  assert.deepEqual(values(7, 40), [20, 32, 110, 20, 11], '×1.9 with Amplification on top');
+  assert.deepEqual(values(7, 41), [11, 17], 'a detrimental Singing song is not scaled');
+  assert.deepEqual(values(7, 42), [11, 17, 110, 20, 6], 'a percussion song is not scaled');
+});
+
 test('aura: Amplification among the pulsed songs raises the shields that land', () => {
   const [settings, at] = bardAt({ aura: 2, jamFest: 2, singingMastery: 1 });
   const gems = [...Array(12).fill(null), { kind: 'spell', id: 22 }, { kind: 'spell', id: 23 }];
@@ -341,6 +357,20 @@ test('crowd control: a lull is flagged beneficial, a self-root is not a root, ru
   assert.deepEqual(rank(classes.snare, 'snare', ctx).map(([s, v]) => [s.name, v]), [['Deep Snare', 60], ['Test Snare', 40]]);
   assert.ok(!names('snare').includes('Test Run Speed'));
   assert.equal(formatMetric('snare', 60), '60 snare');
+});
+
+test('aura: two song-damage songs both land on a mob; other shared effects still refuse', () => {
+  const s = (name, beneficial, slots) => ({ name, beneficial, slots });
+  const x = (slot, spa, value, base = -value) => ({ slot, spa, value, base });
+  const big = s('Test Big Song Damage', 0, [x(1, 334, 12)]);
+  const small = s('Test Small Song Damage', 0, [x(1, 334, 10)]);
+  assert.deepEqual(conflicts([big, small]), [], 'both tick on every mob');
+  const mezA = s('Test Mez A', 0, [x(1, 31, 2, 1)]);
+  const mezB = s('Test Mez B', 0, [x(1, 31, 1, 1)]);
+  assert.deepEqual(conflicts([mezA, mezB]).map((c) => c.kind), ['refused'], 'a shared mez was not tested, so it is still named');
+  const onYouA = s('Test Shield A', 1, [x(1, 334, 12)]);
+  const onYouB = s('Test Shield B', 1, [x(1, 334, 10)]);
+  assert.deepEqual(conflicts([onYouA, onYouB]).map((c) => c.kind), ['refused'], 'on you the rule is unchanged');
 });
 
 test('rule sections: most likely first, alphabetical within, nothing left over', async () => {

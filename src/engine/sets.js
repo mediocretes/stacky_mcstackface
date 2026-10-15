@@ -135,7 +135,8 @@ export function nextChanges(gems, from, at, opts = {}) {
 
 // A set as the game runs it, with its Symphonic Aura when it has one. at(level, extraSinging)
 // returns a context. With Amplification among the pulsed songs, the set is read again with its
-// bonus added, so the damage shields shown are the ones that land.
+// bonus added, so the numbers shown are the ones that land. Not in the first pulse after the aura
+// is switched on: the pulse that lands Amplification is not itself amplified.
 export function resolveWithAura(gems, settings, level, at, { aura = false } = {}) {
   const rank = aura ? bardRanks(settings).aura : 0;
   const opts = rank ? { band: band(rank, gems.length) } : {};

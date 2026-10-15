@@ -284,7 +284,7 @@ function bardInputs(st) {
   return `<details class="bard" ${details('bard', !(b.aura || b.jamFest || b.singingMastery))}><summary>Bard AAs</summary>
     <div class="row">${field('aura', 'Symphonic Aura', 12)}${field('jamFest', 'Jam Fest', 5)}${field('singingMastery', 'Singing Mastery', 4)}</div>
     <p class="small">Ranks, from your AA window. Jam Fest makes songs read 1, 3, 5, 6 or 7 levels higher. Singing Mastery's
-    bonus is applied to Singing songs' damage shields, the one effect it has been measured on. Symphonic Aura's rank is how many
+    bonus is applied to Singing songs' damage shields, stats and resists. Symphonic Aura's rank is how many
     songs a set that runs it gets sung for it (on the Sets tab).</p>
   </details>`;
 }

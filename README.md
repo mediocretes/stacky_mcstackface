@@ -44,8 +44,9 @@ damage-over-time off when the mob would be dead.
 With a bard in the trio, *Your trio* asks for three AA ranks from your AA window:
 
 - **Jam Fest** makes songs read 1, 3, 5, 6 or 7 levels higher, by rank.
-- **Singing Mastery** adds 20% a rank to the singing bonus. It is applied to the damage shield of a
-  Singing-skill song, the one effect it has been measured on; other effects are shown unscaled.
+- **Singing Mastery** adds 20% a rank to the singing bonus. It is applied to a Singing-skill song
+  that lands on you: its damage shield, stats and resists. Its haste does not scale (measured), and
+  its armor class and mana, and a song on a mob, are shown unscaled until they are.
 - **Symphonic Aura** is how many songs the aura sings for a set that runs it.
 
 On the Sets tab, tick **runs the Symphonic Aura** on the set that holds your songs. Then:
@@ -60,16 +61,18 @@ On the Sets tab, tick **runs the Symphonic Aura** on the set that holds your son
 - **Conflicts are named.** Two songs with the same effect in the same slot cannot both hold — the
   game keeps the larger and refuses the other whole. Hastes never add, whatever their slots: only
   the larger counts.
-- **Amplification** in the aura adds its own bonus to Singing songs' damage shields, and the set
-  shows the shields that land.
+- **Amplification** in the aura adds its own bonus to the same effects, and the set shows the
+  numbers that land.
 - **Fill the aura's gems with songs** starts from haste, song damage, damage shield, slow,
   Amplification and mana, keeping the ones a song can fill.
 
 What this rests on: the aura sings every song together, every 6 seconds, so a song's own duration
 does not matter and more ranks do not thin the others. That, the conflict rules and the bonuses
-were all read from a player's combat log. What it does not know yet: whether a song's haste adds to
-a spell's, which of two slows on a mob counts, and which effects besides the damage shield take the
-singing bonus.
+were all read from a player's combat log and inventory window. The bonus was measured on a damage
+shield, strength and cold resist; the other stats and resists are assumed to follow. What it does
+not know yet: whether a song's haste adds to a spell's, which of two slows on a mob counts, and
+whether the singing bonus reaches a song's armor class or mana, or a song on a mob. (It does not
+reach haste: a 23% haste song read 23% with the bonus at ×1.4.)
 
 ## Your files and your data
 
