@@ -99,11 +99,11 @@ singing bonus.
 
 ## Known limits
 
-- **Stacking is not modelled.** Two buffs that use the same effect slot will not both hold on you;
-  the page does not warn about it yet.
+- **Stacking is modelled only among the songs the Symphonic Aura sings.** Two other buffs that use
+  the same effect slot will not both hold on you, and the page does not warn about it yet.
 - **Two scaling formulas are educated guesses.** They affect a few rare spells.
-- **Bard song AAs** (Jam Fest, Singing Mastery, Amplification) are not applied, so songs read at
-  your plain level and singing bonus.
+- **Bard song AAs apply only where they have been measured.** The bard section above says which
+  effects the singing bonus reaches and which it does not.
 - **The level cap is 50**, as observed in game; the spell file itself goes far higher.
 - **After a game patch** that changes the spell file's layout, the page refuses the new file
   rather than reading it wrongly, until it is updated.
