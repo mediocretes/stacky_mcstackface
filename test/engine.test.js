@@ -262,6 +262,22 @@ test('aura: Jam Fest levels and the singing bonus', () => {
   assert.equal(bard(20).byId.get(21).slots[0].value, 140, 'a spell takes neither');
 });
 
+test('aura: the singing bonus reaches stats and resists, not haste, AC or a song on a mob', () => {
+  // str 11, cold resist 17, haste, AC 20, shield 6 — on you; the same str and resist on a mob; and on a drum.
+  const on = '1|4|11|0|100|0$2|47|17|0|100|0$3|11|110|0|100|0$4|1|20|0|100|0$5|59|-6|0|100|0';
+  const dsS = parseClientFiles([SPELLS,
+    song({ id: 40, name: 'Test Chorus', levels: { BRD: 5 }, slots: on, target: 41 }),
+    song({ id: 41, name: 'Test Dirge', levels: { BRD: 5 }, slots: '1|4|-11|0|100|0$2|47|-17|0|100|0', target: 5, beneficial: 0 }),
+    song({ id: 42, name: 'Test Drum Chorus', levels: { BRD: 5 }, slots: on, target: 41, skill: 70 }),
+  ].join('\n'), DBSTR);
+  const settings = { trio: BTRIO, bard: { singingMastery: 1 } };
+  const values = (extra, id) => context(dsS, settings, 20, null, extra).byId.get(id).slots.map((x) => x.value);
+  assert.deepEqual(values(0, 40), [13, 20, 110, 20, 7], '×1.2: str, resist and shield scale; haste and AC do not');
+  assert.deepEqual(values(7, 40), [20, 32, 110, 20, 11], '×1.9 with Amplification on top');
+  assert.deepEqual(values(7, 41), [11, 17], 'a detrimental Singing song is not scaled');
+  assert.deepEqual(values(7, 42), [11, 17, 110, 20, 6], 'a percussion song is not scaled');
+});
+
 test('aura: Amplification among the pulsed songs raises the shields that land', () => {
   const [settings, at] = bardAt({ aura: 2, jamFest: 2, singingMastery: 1 });
   const gems = [...Array(12).fill(null), { kind: 'spell', id: 22 }, { kind: 'spell', id: 23 }];
