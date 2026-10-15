@@ -10,6 +10,12 @@
 export const CHANGELOG = [
   {
     date: '2026-10-14',
+    text: 'Crowd control rules: charm, mesmerize, pacify, fear, root, snare and blind. Charm and mesmerize '
+      + 'are ranked by the highest level they hold, snare by how much it slows, the rest by how long they '
+      + 'last. "What you\'re fighting" admits the ones that only work on undead, summoned or animals.',
+  },
+  {
+    date: '2026-10-14',
     text: 'Song damage is listed with the other damage rules, after damage over time, instead of last.',
   },
   {
