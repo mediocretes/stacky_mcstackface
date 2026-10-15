@@ -179,6 +179,14 @@ const recourseSum = (s, spa) => (s.recourse ?? []).filter((x) => x.spa === spa)
 const swing = (s, spa) => sum(s, spa, 'neg') + recourseSum(s, spa);
 const RESISTS = [46, 47, 48, 49, 50];
 
+// The highest creature level a charm (22) or a mez (31) holds: the slot's max field, a cap
+// rather than a size, so it does not scale with level. No such slot, or a cap of 0, is null.
+function holds(s) {
+  const caps = s.slots.filter((x) => x.spa === 22 || x.spa === 31).map((x) => x.max);
+  const cap = caps.length ? Math.max(...caps) : 0;
+  return cap > 0 ? cap : null;
+}
+
 // Every metric reads higher-is-better. ctx.fightTicks feeds `landed`.
 export const METRICS = {
   dps: { label: 'damage per second of casting', fn: (s) => damage(s) / occupancy(s) },
@@ -208,6 +216,9 @@ export const METRICS = {
   swing_str: { label: 'strength moved, both ends', fn: (s) => swing(s, 4) },
   duration: { label: 'duration', fn: (s) => (s.ticks === PERMANENT ? Infinity : s.ticks) },
   song_tick: { label: 'damage a tick to everything around you', fn: (s) => sum(s, 334, 'neg') },
+  holds: { label: 'highest level it holds', fn: holds },
+  // Negative 3 only: positive 3 is run speed.
+  snare: { label: 'movement taken', fn: (s) => sum(s, 3, 'neg') },
 };
 
 // [[spell, value]] best first; spells the metric cannot value are left out (see `unvalued`).
@@ -241,6 +252,8 @@ const FORMATS = {
   debuff_total: (v) => `-${v} across resists`,
   duration: (v) => (v === Infinity ? 'permanent' : `${v * 6} s`),
   song_tick: (v) => `${v} a tick`,
+  holds: (v) => `to level ${v}`,
+  snare: (v) => `${v} snare`,
 };
 export function formatMetric(metric, v) {
   if (FORMATS[metric]) return FORMATS[metric](v);

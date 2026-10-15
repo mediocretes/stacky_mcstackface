@@ -8,7 +8,7 @@ import { F, FIELD_COUNT, CLASSES, splitRow, LayoutError } from '../src/engine/la
 import { increment, resolve, durationTicks, PERMANENT } from '../src/engine/formulas.js';
 import { parseClientFiles } from '../src/engine/parse.js';
 import { buildPool } from '../src/engine/pool.js';
-import { classify, calibrateBurst, rank, bundle, formatMetric } from '../src/engine/roles.js';
+import { classify, calibrateBurst, rank, unvalued, bundle, formatMetric } from '../src/engine/roles.js';
 import { candidates, coverage } from '../src/engine/wants.js';
 import { analyze } from '../src/engine/analysis.js';
 import { context, resolveSet, nextChanges, rulesFor, mergeImported, resolveWithAura, auraTemplate } from '../src/engine/sets.js';
@@ -282,14 +282,78 @@ test('aura: songs in each other\'s way', () => {
   assert.deepEqual(auraTemplate(c, 5).map((r) => r.key), ['haste', 'damage_shield', 'singing_amplification']);
 });
 
+// ---- crowd control, on synthetic rows ---------------------------------------------------------
+const cc = (o) => row({ durFormula: 300, durCap: 10, ...o });
+const CC = [
+  cc({ id: 40, name: 'Test Charm', levels: { ENC: 10 }, slots: '1|22|1|0|100|25' }),
+  cc({ id: 41, name: 'Better Charm', levels: { ENC: 20 }, slots: '1|22|4|0|100|37' }),
+  cc({ id: 42, name: 'Test Animal Charm', levels: { DRU: 10 }, slots: '1|22|9|0|100|45', target: 9 }),
+  cc({ id: 43, name: 'Test Plant Charm', levels: { DRU: 10 }, slots: '1|22|9|0|100|50', target: 16 }),
+  cc({ id: 44, name: 'Test Mez', levels: { ENC: 2 }, slots: '1|31|2|0|100|55', durCap: 4 }),
+  cc({ id: 45, name: 'Short Mez', levels: { ENC: 15 }, slots: '1|31|1|0|100|30', durCap: 16 }),
+  cc({ id: 46, name: 'Test Lull', levels: { CLR: 5 }, slots: '1|30|10|0|100|40$2|86|10|0|100|40$3|18|0|0|100|0', beneficial: 1, durCap: 25 }),
+  cc({ id: 47, name: 'Test Undead Fear', levels: { CLR: 1 }, slots: '1|23|1|0|100|52', target: 10, durCap: 3 }),
+  cc({ id: 48, name: 'Test Fear', levels: { CLR: 6 }, slots: '1|23|1|0|100|52', durCap: 3 }),
+  cc({ id: 49, name: 'Test Root', levels: { CLR: 7 }, slots: '1|99|-10000|0|100|0', durCap: 8 }),
+  cc({ id: 50, name: 'Test Tree Form', levels: { DRU: 6 }, slots: '1|99|-10000|0|100|0', beneficial: 1, target: 6, durCap: 360 }),
+  cc({ id: 51, name: 'Test Snare', levels: { DRU: 1 }, slots: '1|3|-40|0|100|0', durCap: 30 }),
+  cc({ id: 52, name: 'Deep Snare', levels: { DRU: 20 }, slots: '1|3|-60|0|100|0', durCap: 10 }),
+  cc({ id: 53, name: 'Test Run Speed', levels: { DRU: 10 }, slots: '1|3|30|0|100|0', beneficial: 1, target: 51 }),
+  cc({ id: 54, name: 'Test Blind', levels: { CLR: 1 }, slots: '1|20|-1|0|100|0', durCap: 2 }),
+].join('\n');
+const dsC = parseClientFiles(`${SPELLS}\n${CC}`, DBSTR);
+function ccRoles(hunting) {
+  const { pool } = buildPool(dsC, ['ENC', 'DRU', 'CLR'], 30);
+  const ctx = { hunting, burstThreshold: calibrateBurst(pool, hunting), fightTicks: null };
+  const classes = classify(pool, ctx);
+  return { ctx, classes, names: (key) => classes[key].map((s) => s.name) };
+}
+
+test('crowd control: charm and mez rank by the highest level they hold', () => {
+  const { ctx, classes, names } = ccRoles('generic');
+  assert.deepEqual(names('charm'), ['Test Charm', 'Better Charm'], 'animal and plant charms are not generic');
+  assert.deepEqual(rank(classes.charm, 'holds', ctx).map(([s, v]) => [s.name, v]), [['Better Charm', 37], ['Test Charm', 25]]);
+  assert.deepEqual(rank(classes.mez, 'holds', ctx).map(([s, v]) => [s.name, v]), [['Test Mez', 55], ['Short Mez', 30]]);
+  assert.deepEqual(rank(classes.mez, 'duration', ctx).map(([s]) => s.name), ['Short Mez', 'Test Mez'], 'duration asks the other question');
+  assert.equal(formatMetric('holds', 37), 'to level 37');
+  assert.deepEqual(unvalued(classes.root, 'holds', ctx).map((s) => s.name), ['Test Root'], 'no cap is unknown, not level 0');
+});
+
+test('crowd control: what you are fighting admits animal-only and undead-only spells', () => {
+  const generic = ccRoles('generic');
+  const animal = ccRoles('animal');
+  const undead = ccRoles('undead');
+  assert.ok(!generic.names('charm').includes('Test Animal Charm'));
+  assert.ok(animal.names('charm').includes('Test Animal Charm'));
+  assert.equal(rank(animal.classes.charm, 'holds', animal.ctx)[0][0].name, 'Test Animal Charm');
+  assert.ok(!generic.names('fear').includes('Test Undead Fear'));
+  assert.deepEqual(undead.names('fear'), ['Test Undead Fear', 'Test Fear']);
+  for (const h of ['generic', 'animal', 'undead', 'summoned']) {
+    assert.ok(!ccRoles(h).names('charm').includes('Test Plant Charm'), `a plant-only charm, hunting ${h}`);
+  }
+});
+
+test('crowd control: a lull is flagged beneficial, a self-root is not a root, run speed is not a snare', () => {
+  const { ctx, classes, names } = ccRoles('generic');
+  assert.deepEqual(names('pacify'), ['Test Lull']);
+  assert.deepEqual(names('root'), ['Test Root'], 'the beneficial self-root roots you');
+  assert.deepEqual(names('blind'), ['Test Blind']);
+  assert.deepEqual(rank(classes.snare, 'snare', ctx).map(([s, v]) => [s.name, v]), [['Deep Snare', 60], ['Test Snare', 40]]);
+  assert.ok(!names('snare').includes('Test Run Speed'));
+  assert.equal(formatMetric('snare', 60), '60 snare');
+});
+
 test('rule sections: most likely first, alphabetical within, nothing left over', async () => {
   const { sections } = await import('../src/groups.js');
   const all = sections(() => true);
-  assert.deepEqual(all.map(([title]) => title), ['Damage', 'Healing', 'Slows and debuffs', 'Haste and combat', 'Defense',
-    'Stats', 'Resists', 'Mana and endurance', 'Pets and summoning', 'Cures', 'Movement and senses', 'Travel and escape', 'Appearance'],
+  assert.deepEqual(all.map(([title]) => title), ['Damage', 'Healing', 'Slows and debuffs', 'Haste and combat', 'Crowd control',
+    'Defense', 'Stats', 'Resists', 'Mana and endurance', 'Pets and summoning', 'Cures', 'Movement and senses', 'Travel and escape',
+    'Appearance'],
   'every rule has a section; a new one shows up here as "Other" until it is given one');
   assert.deepEqual(all[0][1].map((r) => r.name), ['best burst damage', 'best damage', 'best damage over time', 'best song damage']);
-  assert.deepEqual(all[5][1].map((r) => r.name), ['agility', 'charisma', 'dexterity', 'intelligence', 'stamina', 'strength', 'wisdom']);
+  assert.deepEqual(all[4][1].map((r) => r.name), ['best blind', 'best charm', 'best fear', 'best mesmerize', 'best pacify',
+    'best root', 'best snare']);
+  assert.deepEqual(all[6][1].map((r) => r.name), ['agility', 'charisma', 'dexterity', 'intelligence', 'stamina', 'strength', 'wisdom']);
   const onlyWants = sections((kind) => kind === 'want');
   assert.ok(!onlyWants.some(([title]) => title === 'Damage'), 'a section with nothing available is left out');
 });
